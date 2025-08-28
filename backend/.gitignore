@@ -1,0 +1,9 @@
+*.json
+*.txt
+test.py
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python

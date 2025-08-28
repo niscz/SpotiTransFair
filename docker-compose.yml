@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend
+    container_name: spotitransfair-backend
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - FRONTEND_URL=http://localhost:5173
+
+  frontend:
+    build: ./frontend
+    container_name: spotitransfair-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend

@@ -1,0 +1,19 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Python Caches und virtuelle Umgebungen
+pycache/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Editor- und Systemdateien
+.vscode/
+.idea/
+*.DS_Store
