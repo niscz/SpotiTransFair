@@ -4,12 +4,19 @@ This module handles the interaction with the YouTube Music API.
 import concurrent.futures
 import tempfile
 import os
+import logging
+import time
+from typing import Tuple, Dict, Any, Union, List
+import requests
 import ytmusicapi
-from typing import Tuple, Dict, Any, Union
+from ytmusicapi.exceptions import YTMusicServerError
 from requests.exceptions import RequestException
-from spotify import get_all_tracks, get_playlist_name, SpotifyError
+from spotify import get_all_tracks, get_playlist_name
 
-BATCH_SIZE = 100
+YTM_EDIT_URL = "https://music.youtube.com/youtubei/v1/playlist/edit?prettyPrint=false"
+YTM_BATCH_SIZE = int(os.getenv("YTM_BATCH_SIZE", "60"))
+YTM_SLEEP_SECS = float(os.getenv("YTM_SLEEP_SECS", "0.3"))
+YTM_POST_CREATE_SLEEP = float(os.getenv("YTM_POST_CREATE_SLEEP", "1.0"))
 
 class YTMError(Exception):
     """Custom exception for errors related to YouTube Music processing."""
@@ -23,6 +30,58 @@ def _headers_to_raw(headers_input: Union[str, Dict[str, str]]) -> str:
         # "cookie: ...\nuser-agent: ..."
         return "\n".join(f"{k}: {v}" for k, v in headers_input.items())
     raise YTMError("Invalid headers format. Must be raw string or key/value dict.")
+
+def _existing_video_ids(ytmusic, playlist_id: str) -> set[str]:
+    try:
+        pl = ytmusic.get_playlist(playlist_id, limit=100000)
+        return {t.get("videoId") for t in (pl.get("tracks") or []) if t.get("videoId")}
+    except Exception as e:
+        logging.warning("Could not fetch existing items for playlist %s: %s", playlist_id, e)
+        return set()
+
+def _add_tracks_resilient(ytmusic, playlist_id: str, video_ids: list[str]) -> list[str]:
+    """Fügt video_ids robust hinzu: dedupe gegen bestehende, bei Fehlern Split/Retry bis Einzelstück.
+    Gibt Liste der endgültig gescheiterten videoIds zurück."""
+    failed: list[str] = []
+    existing = _existing_video_ids(ytmusic, playlist_id)
+
+    def add_chunk(chunk: list[str]) -> None:
+        nonlocal existing, failed
+        # Gegen bereits enthaltene Titel deduplizieren
+        filtered = [v for v in chunk if v and v not in existing]
+        if not filtered:
+            return
+
+        try:
+            res = ytmusic.add_playlist_items(playlist_id, filtered, duplicates=True)
+            ok = not isinstance(res, dict) or res.get("status") in (None, "STATUS_SUCCEEDED")
+            if ok:
+                existing.update(filtered)
+                logging.info("Inserted %d items", len(filtered))
+                return
+            logging.error("Add returned non-success: %s", str(res)[:300])
+        except YTMusicServerError as e:
+            # 409 → split & retry
+            if "409" in str(e):
+                logging.warning("409 on %d items, will split and retry", len(filtered))
+            else:
+                logging.exception("YTMusicServerError on %d items: %s", len(filtered), e)
+        except Exception as e:
+            logging.exception("Unexpected error adding %d items: %s", len(filtered), e)
+
+        if len(filtered) == 1:
+            failed.extend(filtered)
+            return
+        mid = len(filtered) // 2
+        add_chunk(filtered[:mid]); time.sleep(YTM_SLEEP_SECS)
+        add_chunk(filtered[mid:]); time.sleep(YTM_SLEEP_SECS)
+
+    total = len(video_ids)
+    logging.info("Adding %d tracks to playlist %s in chunks of %d", total, playlist_id, YTM_BATCH_SIZE)
+    for start in range(0, total, YTM_BATCH_SIZE):
+        add_chunk(video_ids[start:start + YTM_BATCH_SIZE])
+        time.sleep(YTM_SLEEP_SECS)
+    return failed
 
 def search_track(ytmusic, track):
     """Searches for a single track on YouTube Music and returns its video ID or None."""
@@ -71,7 +130,6 @@ def get_video_ids(ytmusic, tracks):
         raise YTMError("Not a single track could be found on YouTube Music. Are your authentication headers correct and valid?")
     return video_ids, missed_tracks
 
-
 def validate_headers(headers_raw: Union[str, Dict[str, str]]) -> Tuple[bool, str]:
     """Lightweight check to see if YTM headers are usable."""
     temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
@@ -87,6 +145,62 @@ def validate_headers(headers_raw: Union[str, Dict[str, str]]) -> Tuple[bool, str
         temp_file.close()
         os.unlink(temp_file.name)
 
+def _ytm_context(client_version: str = "1.20250827.05.00", hl="de", gl="DE"):
+    return {
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": client_version,
+                "hl": hl,
+                "gl": gl,
+            }
+        }
+    }
+
+def add_tracks_to_playlist(playlist_id: str, video_ids: list[str], headers: dict, client_version="1.20250827.05.00"):
+    """Fügt video_ids in Batches zu playlist_id hinzu. Gibt (ok_count, failed_ids) zurück."""
+    ok = 0
+    failed: list[str] = []
+
+    # Unverzichtbare Header sicherstellen
+    h = {
+        "origin": headers.get("origin", "https://music.youtube.com"),
+        "referer": headers.get("referer", "https://music.youtube.com/"),
+        "authorization": headers["authorization"],  # SAPISIDHASH ...
+        "cookie": headers["cookie"],
+        "x-youtube-client-name": headers.get("x-youtube-client-name", "67"),
+        "x-youtube-client-version": headers.get("x-youtube-client-version", client_version),
+        "content-type": "application/json",
+    }
+    # Nice-to-have (falls vorhanden)
+    for k in ("x-goog-visitor-id", "x-goog-authuser", "x-youtube-identity-token"):
+        if k in headers:
+            h[k] = headers[k]
+
+    def chunks(seq, n):
+        for i in range(0, len(seq), n):
+            yield seq[i:i+n]
+
+    for chunk in chunks(video_ids, YTM_BATCH_SIZE):
+        payload = _ytm_context(client_version)
+        payload["actions"] = [
+            {"addToPlaylistCommand": {"playlistId": playlist_id, "videoId": vid}}
+            for vid in chunk
+        ]
+
+        r = requests.post(YTM_EDIT_URL, headers=h, json=payload, timeout=30)
+        if r.status_code != 200:
+            logging.error("YTM edit failed: status=%s body=%s", r.status_code, r.text[:500])
+            failed.extend(chunk)
+            # kleine Pause und weiter, nicht hart abbrechen
+            time.sleep(0.5)
+            continue
+
+        # Optional: Response prüfen, ob Aktionen acked wurden
+        ok += len(chunk)
+        time.sleep(0.15)  # Rate-Limit nicht reizen
+
+    return ok, failed
 
 def create_ytm_playlist(
     playlist_link: str,
@@ -112,8 +226,52 @@ def create_ytm_playlist(
         name = title_override or get_playlist_name(playlist_link)
         video_ids, missed_tracks = get_video_ids(ytmusic, tracks)
 
+        # ---- Duplikate erkennen (gleiche videoId mehrmals) und melden
+        def _fmt_track(t: Dict[str, Any]) -> str:
+            # robuste Extraktion
+            artist = (
+                t.get("artist")
+                or (t.get("artists") or [{}])[0].get("name")
+                or t.get("artists_str")
+                or "Unknown Artist"
+            )
+            album = (
+                t.get("album")
+                or t.get("album_name")
+                or (t.get("albumObj") or {}).get("name")
+                or ""
+            )
+            title = t.get("title") or t.get("name") or t.get("track") or "Unknown Title"
+            return f"{artist} (-{album}) - {title}" if album else f"{artist} - {title}"
+
+        first_seen: Dict[str, int] = {}
+        unique_video_ids: List[str] = []
+        duplicate_lines: List[str] = []
+        for idx, vid in enumerate(video_ids):
+            if vid in first_seen:
+                # diesen Track (zweiter Treffer) als Duplikat melden
+                try:
+                    duplicate_lines.append(_fmt_track(tracks[idx]))
+                except Exception:
+                    duplicate_lines.append(f"[duplicate videoId={vid}]")
+            else:
+                first_seen[vid] = idx
+                unique_video_ids.append(vid)
+
+        dup_count = len(video_ids) - len(unique_video_ids)
+        if dup_count:
+            logging.info("Found %d duplicate(s) → will skip them.", dup_count)
+        # in die Missed-Struktur aufnehmen (neues Feld)
+        missed_tracks = missed_tracks or {}
+        missed_tracks["duplicates"] = {
+            "count": dup_count,
+            "lines": duplicate_lines,
+        }
+
+        # wir fügen nur die eindeutigen ein
+        video_ids = unique_video_ids
+
         if dry_run:
-            # report only
             return None, missed_tracks
 
         # 1) Create Empty/Initial-Playlist
@@ -123,11 +281,22 @@ def create_ytm_playlist(
             privacy_status=privacy_status
         )
 
-        # 2) Add Items in Batches
-        for i in range(0, len(video_ids), BATCH_SIZE):
-            ytmusic.add_playlist_items(playlist_id, video_ids[i:i + BATCH_SIZE])
+        # 2) Add Items in Batches (mit Logging & Fehleraufsammlung)
+        time.sleep(YTM_POST_CREATE_SLEEP)
+
+        failed_inserts = _add_tracks_resilient(ytmusic, playlist_id, video_ids)
+
+        if failed_inserts:
+            logging.warning("Insert failed for %d/%d tracks", len(failed_inserts), len(video_ids))
+            missed_tracks = {
+                "count": missed_tracks.get("count", 0) + len(failed_inserts),
+                "tracks": missed_tracks.get("tracks", []) + [
+                    {"videoId": vid, "reason": "insert_failed"} for vid in failed_inserts
+                ],
+            }
 
         return playlist_id, missed_tracks
+
     finally:
         temp_file.close()
         os.unlink(temp_file.name)

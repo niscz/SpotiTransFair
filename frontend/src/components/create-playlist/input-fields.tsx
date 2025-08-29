@@ -32,6 +32,10 @@ const PRIVACY_CHOICES = ["PRIVATE", "UNLISTED", "PUBLIC"] as const;
 type PrivacyChoice = typeof PRIVACY_CHOICES[number];
 
 export default function InputFields() {
+    // ---- types for API result ----
+    type Duplicates = { count: number; lines: string[] };
+    type MissedTracks = { count: number; tracks: string[]; duplicates?: Duplicates };
+
     const [authHeaders, setAuthHeaders] = useState("");
     const [serverOnline, setServerOnline] = useState(false);
 
@@ -44,7 +48,11 @@ export default function InputFields() {
     const [cloneError, setCloneError] = useState(false);
     const [cloneErrorMessage, setCloneErrorMessage] = useState<React.ReactNode>("");
     const [missedTracksDialog, setMissedTracksDialog] = useState(false);
-    const [missedTracks, setMissedTracks] = useState<{ count: number; tracks: string[]; }>({ count: 0, tracks: [] });
+    const [missedTracks, setMissedTracks] = useState<MissedTracks>({
+        count: 0,
+        tracks: [],
+        duplicates: { count: 0, lines: [] },
+    });
 
     // NEW: Market & Privacy UI state
     const [market, setMarket] = useState<MarketChoice | "CUSTOM">("US");
@@ -146,10 +154,21 @@ export default function InputFields() {
             const data = await res.json();
 
             if (res.ok) {
-                if (data.missed_tracks?.count > 0) {
-                    setMissedTracks(data.missed_tracks);
-                    setMissedTracksDialog(true);
-                }
+                // tolerate older backend shapes gracefully
+                const mt = (data?.missed_tracks ?? {}) as Partial<MissedTracks>;
+                const missingCount = Number(mt?.count ?? 0);
+                const tracks = Array.isArray(mt?.tracks) ? mt!.tracks : [];
+                const dupCount = Number(mt?.duplicates?.count ?? 0);
+                const dupLines = Array.isArray(mt?.duplicates?.lines) ? mt!.duplicates!.lines : [];
+
+                setMissedTracks({
+                    count: missingCount,
+                    tracks,
+                    duplicates: { count: dupCount, lines: dupLines },
+                });
+
+                // Öffne Dialog, wenn fehlende Titel ODER Duplikate vorhanden sind
+                if (missingCount > 0 || dupCount > 0) setMissedTracksDialog(true);
                 setStarPrompt(true);
             } else if (res.status === 500) {
                 setCloneError(true);
@@ -448,19 +467,67 @@ export default function InputFields() {
             <AlertDialog open={missedTracksDialog} onOpenChange={setMissedTracksDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Some songs couldn't be found</AlertDialogTitle>
+                        {(() => {
+                            const missingCount = missedTracks?.count ?? 0;
+                            const dupCount = missedTracks?.duplicates?.count ?? 0;
+                            const title =
+                                missingCount > 0 && dupCount > 0
+                                    ? "Some songs couldn't be found & duplicates were ignored"
+                                    : missingCount > 0
+                                    ? "Some songs couldn't be found"
+                                    : "Duplicates were ignored";
+                            return <AlertDialogTitle>{title}</AlertDialogTitle>;
+                        })()}
                         <AlertDialogDescription>
                             <div className="mt-2">
-                                <p className="mb-2">{missedTracks.count} songs couldn't be found on YouTube Music:</p>
-                                <div className="max-h-[200px] overflow-y-auto">
-                                    <ul className="list-disc list-inside">
-                                        {missedTracks.tracks.map((track, index) => (
-                                            <li key={index} className="text-sm">
-                                                {track}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
+                                {/* Missing */}
+                                {missedTracks.count > 0 && (
+                                    <>
+                                        <p className="mb-2">
+                                            {missedTracks.count} songs couldn't be found on YouTube Music:
+                                        </p>
+                                        <div className="max-h-[200px] overflow-y-auto">
+                                            <ul className="list-disc list-inside">
+                                                {missedTracks.tracks.map((track, index) => (
+                                                    <li key={index} className="text-sm">
+                                                        {track}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Duplicates */}
+                                {!!missedTracks.duplicates?.count && (
+                                    <div className={`mt-4 ${missedTracks.count ? "border-t pt-4" : ""}`}>
+                                        <p className="mb-2">
+                                            {missedTracks.duplicates.count} duplicates ignored:
+                                        </p>
+                                        <div className="max-h-[200px] overflow-y-auto">
+                                            <ul className="list-disc list-inside">
+                                                {missedTracks.duplicates.lines.map((line, i) => (
+                                                    <li key={i} className="text-sm">
+                                                        {line}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                        <div className="mt-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    navigator.clipboard.writeText(
+                                                        missedTracks.duplicates!.lines.join("\n")
+                                                    )
+                                                }
+                                            >
+                                                Copy duplicate list
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
