@@ -1,5 +1,3 @@
-*.json
-*.txt
 test.py
 .env
 .venv/
