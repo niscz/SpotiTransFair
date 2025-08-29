@@ -37,9 +37,14 @@ class SpotifyClient:
         url = f"{self.API_BASE_URL}{endpoint}"
         headers = {"Authorization": f"Bearer {self._access_token}"}
         try:
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json()
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 401:
+                # one refresh attempt
+                self._access_token = self._get_access_token()
+                headers["Authorization"] = f"Bearer {self._access_token}"
+                resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            return resp.json()
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
                 raise SpotifyError(
@@ -55,9 +60,13 @@ class SpotifyClient:
             # Catch network errors
             raise SpotifyError(f"Could not connect to Spotify API: {e}") from e
 
-    def get_playlist_tracks(self, playlist_id, market):
+    def get_playlist_tracks(self, playlist_id, market=None):
         """Fetches all tracks from a given playlist."""
-        endpoint = f"/playlists/{playlist_id}/tracks?market={market}&limit=50"
+        endpoint = f"/playlists/{playlist_id}/tracks"
+        if market:
+            endpoint += f"?market={market}&limit=50"
+        else:
+            endpoint += "?limit=50"
         all_tracks = []
         while endpoint:
             data = self._make_request(endpoint)

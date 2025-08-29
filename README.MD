@@ -5,44 +5,57 @@
 
 Transfer your Spotify playlists to YouTube Music with a secure, high-performance, and self-hostable application.
 
-<!-- Replace with a screenshot or GIF of the app -->
 ![SpotiTransFair Screenshot](./githubcontent/screenshot.png)
 
 ## 🚀 Key Features
 
 -   **Seamless Playlist Transfer**: Convert any public Spotify playlist to a new YouTube Music playlist.
--   **Fast & Efficient**: Utilizes parallel processing to search for tracks, making transfers incredibly fast, even for large playlists.
--   **Private & Secure**: Creates playlists as "Private" on your YouTube Music account by default.
--   **Detailed Reporting**: Get a list of any tracks that couldn't be found on YouTube Music.
--   **Dockerized for Easy Deployment**: Get the entire application (Frontend + Backend) running with a single command.
--   **Modern Tech Stack**: Built with React, TypeScript, Flask, and a high-performance ASGI server setup.
+-   **Fast & Efficient**: Parallelized track searches drastically cut transfer time. Tracks are added to YouTube Music in batches (default 100) for resiliency.
+-   **Private & Secure by Design**: 
+    -   Playlists default to PRIVATE (you can choose UNLISTED or PUBLIC).
+    -   Your YouTube Music auth headers are processed in-memory per request and never written to disk.
+-   **Region-Aware Market Selection**: UI preselects the market (e.g., US, DE, GB) based on your region (best-effort) — you can override it at any time.
+-   **Detailed Reporting**: Get a “missed tracks” dialog if some songs weren’t found.
+-   **Health Check & UX niceties**:
+    -   One-click Connect button tests backend availability.
+    -   Clear, user-friendly error dialogs with actionable hints.
+-   **Dockerized for Easy Deployment**: One command to bring up Frontend + Backend with Nginx reverse proxy.
+-   **Modern Tech Stack**: React + TypeScript frontend; Python backend served with Gunicorn + Uvicorn (ASGI).
 
 ## 🌱 Project Evolution: From Concept to Production-Ready
 
-This project is a heavily refactored, secured, and dockerized version of the original concept from the [SpotTransfer](https://github.com/Pushan2005/SpotTransfer) repository by **[Pushan2005](https://github.com/Pushan2005)**. We extend our sincere thanks to him for the initial groundwork.
+This project is a heavily refactored, secured, and dockerized version of the original concept from the [SpotTransfer](https://github.com/Pushan2005/SpotTransfer) repository by **[Pushan2005](https://github.com/Pushan2005)**.
 
-Our goal was to take this great idea and re-engineer it into a robust, scalable, and secure application that follows modern DevOps and software engineering best practices.
+The goal was to take this great idea and re-engineer it into a robust, scalable, and secure application that follows modern DevOps and software engineering best practices.
 
 ### Key Improvements Made
 
 -   **🚀 Performance Overhaul**:
-    -   **Asynchronous Architecture**: Replaced the original synchronous Flask development server with a production-grade Gunicorn setup using modern `Uvicorn` workers. This allows the server to handle many concurrent requests without blocking.
-    -   **Parallel Track Searching**: Implemented `concurrent.futures` in the backend to search for all playlist tracks on YouTube Music simultaneously, drastically reducing the total processing time from minutes to mere seconds for large playlists.
+    -   **Asynchronous/Concurrent processing** for YouTube Music searches.
+    -   **Batched adds**: to playlists (default 100 per request) for better stability and fewer transient API failures.
 
 -   **🛡️ Security Hardening**:
-    -   **Solved Critical Race Condition**: Eliminated the critical bug where simultaneous user requests could result in playlists being created on the wrong accounts by removing shared file-based authentication.
-    -   **Secure In-Memory Handling**: User authentication headers are now handled securely in-memory for each request and are never written to the server's disk.
-    -   **Robust Error Handling**: Replaced generic error responses with a secure system that logs detailed errors on the server while showing user-friendly, safe messages on the client, preventing internal detail leaks.
+    -   **Eliminated shared file-based auth** → no cross-user leakage.
+    -   **Per-request, in-memory handling of headers**; sensitive data never persisted.
+    -   **Non-Root**: Containers run as non-root users.
+
+-   **🧭 API Ergonomics & UX**:
+    -   **Market selector** in UI (default based on region).
+    -   **Privacy selector** in UI (default PRIVATE).
+    -   /api health endpoint + “Connect” button in UI.  
+    -   Clear, consistent success and error dialogs; improved empty/timeout states.
+
+-   **🔧 Code Quality & Stability**:
+    -   **Complete Refactor** for clarity, stricter typing, and graceful fallbacks..
+    -   **Bug Squashing Marathon**: Solved numerous infrastructure bugs.
+    -   **Frontend Consistency**: Small tidy-ups across UI copy, validation, and dialogs.
 
 -   **🐳 Full Dockerization & DevOps**:
     -   **One-Command Setup**: The entire application, consisting of a React frontend and a Python backend, is containerized and managed with Docker Compose for an incredibly simple setup.
     -   **Multi-Stage Dockerfiles**: Implemented multi-stage builds for both frontend and backend, resulting in minimal, optimized, and more secure production images.
     -   **Nginx Reverse Proxy**: Deployed a production-standard Nginx reverse proxy within the frontend container. This correctly serves the React application and securely routes API traffic to the backend, solving all cross-origin (CORS) and network-related issues.
+    -   **Gunicorn/Uvicorn**: Production Gunicorn config with Uvicorn workers.
 
--   **🔧 Code Quality & Stability**:
-    -   **Complete Refactor**: The backend Python code was refactored to be more modular, maintainable, and robust, including the creation of dedicated API client classes.
-    -   **Bug Squashing Marathon**: Solved numerous infrastructure bugs.
-    -   **Frontend Consistency**: Ensured a consistent and professional user experience.
 
 ## 🤔 Why a Header-Based Approach? A Note on APIs
 
@@ -71,8 +84,7 @@ With Docker, getting SpotiTransFair running on your local machine is incredibly 
 ### Prerequisites
 
 -   [Git](https://git-scm.com/)
--   [Docker](https://www.docker.com/get-started)
--   [Docker Compose](https://docs.docker.com/compose/install/) (usually included with Docker Desktop)
+-   [Docker](https://www.docker.com/get-started) (Docker Compose included in Desktop; on Linux install Compose if needed)
 
 ### 1. Clone the Repository
 
@@ -119,10 +131,64 @@ Once the containers are running, open your web browser and navigate to:
 
 ## 📖 How to Use the App
 
-1.  **Get Your Auth Headers**: The application will guide you through the process of getting your authentication headers from your browser's developer tools while you are logged into YouTube Music.
-2.  **Provide Spotify Playlist**: Paste the public URL of the Spotify playlist you want to transfer.
-3.  **Connect & Clone**: Click "Connect" to ensure the backend is running, then click "Clone Playlist" to start the transfer.
-4.  **Done!**: The playlist will be created in your YouTube Music account.
+1.  **Sign in to YouTube Music** in your browser [Youtube Music](https://music.youtube.com).
+2.  **Get Auth Headers** (the UI has a step-by-step guide):
+    -   Open DevTools → Network → filter /browse (POST, 200).
+    -   Copy the **Request Headers** and paste them into the app.
+3.  **Provide Spotify Playlist**: Paste the public URL of the Spotify playlist you want to transfer.
+4.  **Pick options**:
+    -   **Market**: defaults to a best-effort region guess; override if needed (e.g., US, DE, GB).
+    -   **Privacy**: **PRIVATE** (default), **UNLISTED**, or **PUBLIC**.
+5.  **Connect & Clone**: Click "Connect" to ensure the backend is running, then click "Clone Playlist" to start the transfer.
+6.  **Done!**: The playlist will be created in your YouTube Music account. If we can’t find some songs, you’ll get a **missed tracks** list.
+
+## ⚙️ Configuration & Behavior
+
+-   **Batches**: Tracks are added in chunks of **100** (configurable in code) to reduce failures and speed up large transfers.
+-   **Market**: Affects search results (e.g., region-specific availability).
+-   **Privacy**: Controls the resulting YouTube Music playlist visibility.
+-   **Security**:
+    -   Headers are never logged or persisted.
+    -   Containers run as non-root (appuser) in production stages.
+-   **Health Check**:
+    -   GET /api/ returns a simple JSON if the backend is up.
+    -   The UI’s Connect button calls this endpoint.
+
+## 🧪 API (for self-hosters / integrators)
+
+-   **Health**: GET /api/
+    -   Response: { "status": "ok" }
+
+-   **Create Playlist**: POST /api/create
+    -   Body:
+        ```json
+        {
+        "playlist_link": "https://open.spotify.com/playlist/...",
+        "auth_headers": "accept: */*\n... (full raw request headers) ...",
+        "market": "US",
+        "privacy_status": "PRIVATE"
+        }
+        ```
+    -   Response (example):
+        ```json
+        {
+        "playlist_id": "PLxxxxxxxxxxxx",
+        "name": "My Migrated Playlist",
+        "missed_tracks": { "count": 2, "tracks": ["Artist – Title", "…"] }
+        }
+        ```
+
+    ***cURL example***
+    ```bash
+    curl -X POST http://localhost:5173/api/create \
+        -H "Content-Type: application/json" \
+        -d '{
+            "playlist_link": "https://open.spotify.com/playlist/...",
+            "auth_headers": "accept: */*\n...paste raw request headers here...",
+            "market": "US",
+            "privacy_status": "PRIVATE"
+        }'
+    ```
 
 ## 📂 Project Structure
 
@@ -193,10 +259,35 @@ SpotiTransFair/
 
 ## 💻 Technology Stack
 
--   **Backend**: Python, Flask, Gunicorn, Uvicorn
+-   **Backend**: Python, Flask (app), Gunicorn + Uvicorn (ASGI workers)
 -   **Frontend**: React, TypeScript, Vite, TailwindCSS
 -   **APIs**: Spotify Web API, `ytmusicapi` (unofficial YouTube Music API)
--   **Deployment**: Docker, Docker Compose, Nginx
+-   **Deployment**: Docker, Docker Compose, Nginx reverse proxy
+
+## 🧩 Known Limitations
+
+-   Source playlists must be public on Spotify.
+-   YouTube Music availability varies by market/region; choosing the right market can improve match rates.
+-   Some tracks won’t have exact matches on YouTube Music (covers, regional variants, unavailable releases).
+
+## 🆘 Troubleshooting
+
+-   **“Connection Error” / 502 from** /api/
+    Usually the backend failed to boot. If you’re running outside Docker, ensure:
+    -   **Python 3.10+** (the code uses modern type hints like str | None).
+        If you must use Python 3.9, replace unions with typing.Optional[...], or run via Docker which ships a compatible runtime.
+-   **Timeouts on very large playlists**
+    Try again; batching is enabled, but YouTube Music can rate-limit aggressively. Self-hosting generally improves reliability.
+
+## 🔐 Security Notes
+
+-   Auth headers are handled in-memory only and never persisted.
+-   Containers run as non-root (appuser) in production stages (frontend & backend).
+-   Nginx terminates requests and proxies /api/* internally to the backend to avoid CORS complexity.
+
+## 📣 Announcements
+
+Check the Announcements page in the app for the latest updates.
 
 ## 📄 License
 
@@ -204,4 +295,4 @@ This project is licensed under the **GNU General Public License v3.0**. As a der
 
 ## 🙏 Acknowledgments
 
--   A big thank you to **[Pushan2005](https://github.com/Pushan2005)** for creating the [original SpotTransfer project](https://github.com/Pushan2005/SpotTransfer) that inspired this enhanced version.
+-   Thanks to **[Pushan2005](https://github.com/Pushan2005)** for the original idea and repo [SpotTransfer project](https://github.com/Pushan2005/SpotTransfer).

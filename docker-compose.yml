@@ -8,6 +8,12 @@ services:
       - .env
     environment:
       - FRONTEND_URL=http://localhost:5173
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
@@ -16,3 +22,9 @@ services:
       - "5173:80"
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"] 
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

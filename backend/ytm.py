@@ -5,28 +5,44 @@ import concurrent.futures
 import tempfile
 import os
 import ytmusicapi
+from typing import Tuple, Dict, Any, Union
 from requests.exceptions import RequestException
 from spotify import get_all_tracks, get_playlist_name, SpotifyError
 
+BATCH_SIZE = 100
 
 class YTMError(Exception):
     """Custom exception for errors related to YouTube Music processing."""
 
+def _headers_to_raw(headers_input: Union[str, Dict[str, str]]) -> str:
+    """Accept dict or raw string and normalize to the 'headers_raw' format expected by ytmusicapi.setup."""
+    if isinstance(headers_input, str):
+        return headers_input
+    if isinstance(headers_input, dict):
+        # Convert {"cookie": "...", "user-agent": "..."} to:
+        # "cookie: ...\nuser-agent: ..."
+        return "\n".join(f"{k}: {v}" for k, v in headers_input.items())
+    raise YTMError("Invalid headers format. Must be raw string or key/value dict.")
 
 def search_track(ytmusic, track):
     """Searches for a single track on YouTube Music and returns its video ID or None."""
-    search_string = f"{track['name']} {track['artists'][0]}"
+    q_title = track["name"].lower()
+    q_artist = track["artists"][0].lower()
     try:
-        search_results = ytmusic.search(search_string, filter="songs")
-        if search_results:
-            return search_results[0]["videoId"]
-        return None
+        search_results = ytmusic.search(f"{track['name']} {track['artists'][0]}", filter="songs") or []
+        for r in search_results[:5]:
+            title = (r.get("title") or "").lower()
+            artists = " ".join(a.get("name","") for a in r.get("artists", [])).lower()
+            if q_title in title and (q_artist in artists or artists in q_artist):
+                return r.get("videoId")
+        # fallback to first result if anything exists
+        return (search_results[0].get("videoId") if search_results else None)
     except RequestException as e:
-        print(f"Network error while searching for '{search_string}': {e}")
+        print(f"Network error while searching for '{q_artist} - {q_title}': {e}")
     except IndexError:
-        print(f"No results found for '{search_string}' on YouTube Music.")
+        print(f"No results found for '{q_artist} - {q_title}' on YouTube Music.")
     except Exception as e:
-        print(f"Generic error while searching for '{search_string}': {e}")
+        print(f"Generic error while searching for '{q_artist} - {q_title}': {e}")
     return None
 
 
@@ -56,34 +72,62 @@ def get_video_ids(ytmusic, tracks):
     return video_ids, missed_tracks
 
 
-def create_ytm_playlist(playlist_link, headers_raw):
-    """Creates a YouTube Music playlist from a Spotify playlist link."""
-    
-    # NamedTemporaryFile creates a secure, temporary file.
-    # 'delete=False' is necessary on Windows for reusing the path.
+def validate_headers(headers_raw: Union[str, Dict[str, str]]) -> Tuple[bool, str]:
+    """Lightweight check to see if YTM headers are usable."""
     temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
-    
     try:
-        # Let the library process the headers and write to the temporary file.
-        ytmusicapi.setup(filepath=temp_file.name, headers_raw=headers_raw)
-        
-        # Initialize the client with the path to the correctly formatted temporary file.
+        ytmusicapi.setup(filepath=temp_file.name, headers_raw=_headers_to_raw(headers_raw))
         ytmusic = ytmusicapi.YTMusic(temp_file.name)
-        
-        tracks = get_all_tracks(playlist_link, "IN")
-        name = get_playlist_name(playlist_link)
+        # small/auth-only call
+        _ = ytmusic.get_library_playlists(limit=1)
+        return True, "Headers valid."
+    except Exception as e:
+        return False, f"Headers invalid or expired: {str(e)}"
+    finally:
+        temp_file.close()
+        os.unlink(temp_file.name)
+
+
+def create_ytm_playlist(
+    playlist_link: str,
+    headers_raw: Union[str, Dict[str, str]],
+    *,
+    market: str = "US",
+    privacy_status: str = "PRIVATE",
+    title_override: str | None = None,
+    dry_run: bool = False,
+) -> Tuple[str | None, Dict[str, Any]]:
+    """
+    Creates a YouTube Music playlist from a Spotify playlist link.
+
+    Returns (playlist_id or None if dry_run, missed_tracks dict).
+    """
+    temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
+
+    try:
+        ytmusicapi.setup(filepath=temp_file.name, headers_raw=_headers_to_raw(headers_raw))
+        ytmusic = ytmusicapi.YTMusic(temp_file.name)
+
+        tracks = get_all_tracks(playlist_link, market)
+        name = title_override or get_playlist_name(playlist_link)
         video_ids, missed_tracks = get_video_ids(ytmusic, tracks)
 
-        if video_ids:
-            ytmusic.create_playlist(
-                title=name,
-                description="Created with SpotiTransFair",
-                privacy_status="PRIVATE",
-                video_ids=video_ids
-            )
-        return missed_tracks
+        if dry_run:
+            # report only
+            return None, missed_tracks
+
+        # 1) Create Empty/Initial-Playlist
+        playlist_id = ytmusic.create_playlist(
+            title=name,
+            description="Created with SpotiTransFair",
+            privacy_status=privacy_status
+        )
+
+        # 2) Add Items in Batches
+        for i in range(0, len(video_ids), BATCH_SIZE):
+            ytmusic.add_playlist_items(playlist_id, video_ids[i:i + BATCH_SIZE])
+
+        return playlist_id, missed_tracks
     finally:
-        # Ensure the temporary file is ALWAYS deleted,
-        # even if an error occurs.
         temp_file.close()
         os.unlink(temp_file.name)

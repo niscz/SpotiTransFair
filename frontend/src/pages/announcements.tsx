@@ -1,4 +1,5 @@
 // frontend/src/pages/announcements.tsx
+import React from "react";
 import { Footer } from "@/components/landing/footer";
 import Navbar from "@/nav-bar.tsx";
 
@@ -6,7 +7,7 @@ interface Announcement {
     id: string;
     date: string;
     title: string;
-    content: string;
+    content: React.ReactNode;
     type: "info" | "warning" | "success" | "error";
 }
 
@@ -15,7 +16,23 @@ const announcements: Announcement[] = [
         id: "1",
         date: "August 28, 2025",
         title: "SpotiTransFair Launch",
-        content: `SpotiTransFair is now live! 🎉`,
+        content: (
+            <>
+                SpotiTransFair is now live! 🎉
+                <br />
+                <br />
+                If you want to self-host check out the{" "}
+                <a
+                    href="https://github.com/niscz/SpotiTransFair#%EF%B8%8F-getting-started-installation"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                >
+                    GitHub repository
+                </a>
+                !
+            </>
+        ),
         type: "success",
     },
 ];
@@ -55,10 +72,7 @@ export default function Announcements() {
                             .reverse()
                             .map((announcement, index) => (
                                 <div key={announcement.id}>
-                                    <section
-                                        id={`announcement-${announcement.id}`}
-                                        className="py-6"
-                                    >
+                                    <section id={`announcement-${announcement.id}`} className="py-6">
                                         <div className="flex items-start gap-3">
                                             <span className="text-lg mt-1 flex-shrink-0">
                                                 {getTypeIcon(announcement.type)}
@@ -77,8 +91,7 @@ export default function Announcements() {
                                                 </div>
                                                 {announcement.id === "7" && (
                                                     <div className="mt-3">
-                                                        <a
-                                                            href="https://github.com/niscz/SpotiTransFair"
+                                                        <a href="https://github.com/niscz/SpotiTransFair"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="inline-flex items-center gap-2 px-3 py-1.5 bg-neutral-800 dark:bg-white text-white dark:text-black text-sm rounded-lg hover:bg-neutral-700 dark:hover:bg-gray-100 transition-colors"

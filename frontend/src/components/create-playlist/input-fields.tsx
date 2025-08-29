@@ -4,7 +4,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { FaExclamationCircle } from "react-icons/fa";
-import { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
     AlertDialog,
@@ -19,6 +19,18 @@ import {
 import { FaGithub } from "react-icons/fa";
 import { CheckIcon } from "@/components/ui/check.tsx";
 
+// handliche Liste gängiger Spotify-Märkte (kurz gehalten, inkl. EU/NA/SA/AS/OCE)
+const MARKET_CHOICES = [
+    "US", "GB", "DE", "FR", "IT", "ES", "NL", "SE", "PL", "IE",
+    "CA", "BR", "AR", "MX", "CL", "CO",
+    "AU", "NZ", "JP", "KR", "IN", "ID", "SG", "TH", "MY", "VN", "PH",
+    "TR", "AE", "SA", "ZA"
+] as const;
+type MarketChoice = typeof MARKET_CHOICES[number];
+
+const PRIVACY_CHOICES = ["PRIVATE", "UNLISTED", "PUBLIC"] as const;
+type PrivacyChoice = typeof PRIVACY_CHOICES[number];
+
 export default function InputFields() {
     const [authHeaders, setAuthHeaders] = useState("");
     const [serverOnline, setServerOnline] = useState(false);
@@ -30,23 +42,37 @@ export default function InputFields() {
     const [connectionError, setConnectionError] = useState(false);
     const [errorMessage, setErrorMessage] = useState<React.ReactNode>("");
     const [cloneError, setCloneError] = useState(false);
-    const [cloneErrorMessage, setCloneErrorMessage] =
-        useState<React.ReactNode>("");
+    const [cloneErrorMessage, setCloneErrorMessage] = useState<React.ReactNode>("");
     const [missedTracksDialog, setMissedTracksDialog] = useState(false);
-    const [missedTracks, setMissedTracks] = useState<{
-        count: number;
-        tracks: string[];
-    }>({
-        count: 0,
-        tracks: [],
-    });
+    const [missedTracks, setMissedTracks] = useState<{ count: number; tracks: string[]; }>({ count: 0, tracks: [] });
+
+    // NEW: Market & Privacy UI state
+    const [market, setMarket] = useState<MarketChoice | "CUSTOM">("US");
+    const [customMarket, setCustomMarket] = useState("");
+    const [autoMarket, setAutoMarket] = useState<string | null>(null);
+    const [privacyStatus, setPrivacyStatus] = useState<PrivacyChoice>("PRIVATE");
 
     const { playlistUrl, setPlaylistUrl } = usePlaylist();
 
-    const validateUrl = (url: string) => {
-        const pattern = /^(?:https?:\/\/)?open\.spotify\.com\/playlist\/.+/;
-        return pattern.test(url);
-    };
+    // --- helpers ---
+    const effectiveMarket = useMemo(() => {
+        if (market === "CUSTOM") {
+            return (customMarket || "").trim().toUpperCase();
+        }
+        return market;
+    }, [market, customMarket]);
+
+    const customMarketInvalid =
+        market === "CUSTOM" && !/^[A-Z]{2}$/.test(effectiveMarket);
+
+    const isCloneDisabled =
+        !isValidUrl ||
+        !authHeaders ||
+        playlistUrl.trim() === "" ||
+        !serverOnline ||
+        customMarketInvalid;
+
+    const validateUrl = (url: string) => /^(?:https?:\/\/)?open\.spotify\.com\/playlist\/.+/.test(url);
 
     const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const url = e.target.value;
@@ -54,25 +80,73 @@ export default function InputFields() {
         setIsValidUrl(validateUrl(url) || url === "");
     };
 
+    // Auto-Market per IP, Fallback: Browser-Locale
+    useEffect(() => {
+        let cancelled = false;
+
+        async function detectMarket() {
+            // 1) IP-Geolocation (ohne API-Key, CORS-freundlich)
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 2500);
+                const res = await fetch("https://ipwho.is/?fields=country_code", {
+                    signal: controller.signal,
+                });
+                clearTimeout(timeout);
+                const data = await res.json().catch(() => null);
+                const cc = (data?.country_code || "").toUpperCase();
+                if (!cancelled && /^[A-Z]{2}$/.test(cc)) {
+                    setAutoMarket(cc);
+                    if (MARKET_CHOICES.includes(cc as MarketChoice)) {
+                        setMarket(cc as MarketChoice);
+                    } else {
+                        setMarket("CUSTOM");
+                        setCustomMarket(cc);
+                    }
+                    return;
+                }
+            } catch {
+                // ignore, fallback below
+            }
+            // 2) Fallback: navigator.language → "en-US" → "US"
+            const loc = (navigator.language || "").split("-")[1];
+            const cc = (loc || "").toUpperCase();
+            if (!cancelled && /^[A-Z]{2}$/.test(cc)) {
+                setAutoMarket(cc);
+                if (MARKET_CHOICES.includes(cc as MarketChoice)) {
+                    setMarket(cc as MarketChoice);
+                } else {
+                    setMarket("CUSTOM");
+                    setCustomMarket(cc);
+                }
+            }
+        }
+
+        detectMarket();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     async function clonePlaylist() {
         const body = {
             playlist_link: playlistUrl,
             auth_headers: authHeaders,
+            market: effectiveMarket || "US",
+            privacy_status: privacyStatus,
         };
 
         try {
             setdialogOpen(true);
             const res = await fetch(`/api/create`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
             });
             const data = await res.json();
 
             if (res.ok) {
-                if (data.missed_tracks.count > 0) {
+                if (data.missed_tracks?.count > 0) {
                     setMissedTracks(data.missed_tracks);
                     setMissedTracksDialog(true);
                 }
@@ -81,8 +155,7 @@ export default function InputFields() {
                 setCloneError(true);
                 setCloneErrorMessage(
                     <>
-                        Server timeout while cloning playlist. Please try again
-                        or{" "}
+                        Server timeout while cloning playlist. Please try again or{" "}
                         <a
                             href="https://github.com/niscz/SpotiTransFair/issues/new/choose"
                             className="text-blue-500 hover:underline"
@@ -94,7 +167,8 @@ export default function InputFields() {
             } else {
                 setCloneError(true);
                 setCloneErrorMessage(
-                    data.message || "Failed to clone playlist"
+                    // nicer backend errors (new API returns {error:{code,message}})
+                    data?.error?.message || data?.message || "Failed to clone playlist"
                 );
             }
         } catch {
@@ -111,12 +185,7 @@ export default function InputFields() {
         setServerOnline(false);
 
         try {
-            const res = await fetch(`/api/`, {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            });
+            const res = await fetch(`/api/`, { method: "GET", headers: { "Content-Type": "application/json" } });
             const data = await res.json();
             if (res.ok) {
                 setServerOnline(true);
@@ -125,8 +194,7 @@ export default function InputFields() {
                 setConnectionError(true);
                 setErrorMessage(
                     <>
-                        Server Error (500). The server likely hit a timeout.
-                        Please try again later or{" "}
+                        Server Error (500). The server likely hit a timeout. Please try again later or{" "}
                         <a
                             href="https://github.com/niscz/SpotiTransFair/issues/new/choose"
                             className="text-blue-500 hover:underline"
@@ -141,8 +209,7 @@ export default function InputFields() {
             setConnectionError(true);
             setErrorMessage(
                 <>
-                    Unable to connect to server. If this issue persists, please
-                    contact me or{" "}
+                    Unable to connect to server. If this issue persists, please contact me or{" "}
                     <a
                         href="https://github.com/niscz/SpotiTransFair/issues/new/choose"
                         className="text-blue-500 hover:underline"
@@ -159,12 +226,10 @@ export default function InputFields() {
     return (
         <>
             <div className="w-full flex items-center justify-around">
+                {/* LEFT: Auth headers */}
                 <div className="flex flex-col gap-3 items-center justify-center">
                     <div className="space-y-1">
-                        <h1 className="text-lg font-semibold">
-                            Paste headers here
-                        </h1>
-                        <p className="text-sm text-gray-500"></p>
+                        <h1 className="text-lg font-semibold">Paste headers here</h1>
                     </div>
                     <Textarea
                         placeholder="Paste your headers here"
@@ -175,60 +240,43 @@ export default function InputFields() {
                     />
                 </div>
 
+                {/* RIGHT: Server connect + playlist + options */}
                 <div className="flex flex-col gap-12 items-start justify-center">
+                    {/* connect */}
                     <div className="flex flex-col w-full gap-3 items-center justify-center">
                         <div className="space-y-1 w-full">
-                            <h1 className="text-lg font-semibold w-full">
-                                You need to be connected to the server
-                            </h1>
-                            {serverOnline && (
-                                <p className="text-green-500 text-sm">
-                                    Connection Successful
-                                </p>
-                            )}
+                            <h1 className="text-lg font-semibold w-full">You need to be connected to the server</h1>
+                            {serverOnline && <p className="text-green-500 text-sm">Connection Successful</p>}
                         </div>
-                        <AlertDialog
-                            open={connectionDialogOpen}
-                            onOpenChange={setConnectionDialogOpen}
-                        >
+                        <AlertDialog open={connectionDialogOpen} onOpenChange={setConnectionDialogOpen}>
                             <AlertDialogTrigger asChild>
-                                <Button
-                                    className="w-full"
-                                    onClick={testConnection}
-                                >
+                                <Button className="w-full" onClick={testConnection}>
                                     Connect
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
-                                    <AlertDialogTitle>
-                                        Requesting connection...
-                                    </AlertDialogTitle>
+                                    <AlertDialogTitle>Requesting connection...</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                        Please wait till the server comes
-                                        online. This may take upto a minute.
+                                        Please wait till the server comes online. This may take upto a minute.
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                             </AlertDialogContent>
                         </AlertDialog>
                     </div>
 
+                    {/* playlist URL */}
                     <div className="flex flex-col gap-3 items-start justify-center">
                         <div className="space-y-1">
-                            <h1 className="text-lg font-semibold">
-                                Paste Spotify playlist URL here
-                            </h1>
+                            <h1 className="text-lg font-semibold">Paste Spotify playlist URL here</h1>
                             <div className="flex items-center gap-2">
                                 <FaExclamationCircle />
-                                <p className="text-sm text-gray-500">
-                                    Make sure the playlist is public
-                                </p>
+                                <p className="text-sm text-gray-500">Make sure the playlist is public</p>
                             </div>
                             <div className="flex items-center gap-2 mt-2">
                                 <FaExclamationCircle className="text-orange-500" />
                                 <p className="text-sm text-gray-500">
-                                    Timeout issues are common due to server
-                                    limitations.
+                                    Timeout issues are common due to server limitations.
                                     <br />
                                     If you experience them, consider{" "}
                                     <a
@@ -246,49 +294,95 @@ export default function InputFields() {
                             value={playlistUrl}
                             onChange={handleUrlChange}
                             id="playlist-name"
-                            className={`w-full ${
-                                !isValidUrl ? "border-red-500" : ""
-                            }`}
+                            className={`w-full ${!isValidUrl ? "border-red-500" : ""}`}
                         />
-                        {!isValidUrl && (
-                            <p className="text-red-500 text-sm">
-                                Please enter a valid Spotify playlist URL
-                            </p>
-                        )}
-                        <AlertDialog
-                            open={dialogOpen}
-                            onOpenChange={setdialogOpen}
-                        >
-                            <AlertDialogTrigger asChild>
-                                <Button
-                                    disabled={
-                                        !isValidUrl ||
-                                        !authHeaders ||
-                                        playlistUrl.trim() === "" ||
-                                        !serverOnline
-                                    }
-                                    className="w-full"
-                                    onClick={clonePlaylist}
+                        {!isValidUrl && <p className="text-red-500 text-sm">Please enter a valid Spotify playlist URL</p>}
+
+                        {/* NEW: Options (Market + Privacy) */}
+                        <div className="mt-4 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Market select */}
+                            <div className="flex flex-col">
+                                <label htmlFor="market" className="text-sm font-medium mb-1">
+                                    Market
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        id="market"
+                                        value={market === "CUSTOM" ? "CUSTOM" : market}
+                                        onChange={(e) => {
+                                            const v = e.target.value as MarketChoice | "CUSTOM";
+                                            if (v === "CUSTOM") setMarket("CUSTOM");
+                                            else setMarket(v);
+                                        }}
+                                        className="border rounded-md px-3 py-2 bg-background"
+                                    >
+                                        {MARKET_CHOICES.map((m) => (
+                                            <option key={m} value={m}>
+                                                {m}
+                                            </option>
+                                        ))}
+                                        <option value="CUSTOM">Other…</option>
+                                    </select>
+                                </div>
+                                {market === "CUSTOM" && (
+                                    <div className="mt-2">
+                                        <Input
+                                            placeholder="Enter 2-letter country code (e.g., US)"
+                                            value={customMarket}
+                                            onChange={(e) => setCustomMarket(e.target.value)}
+                                            className={`${customMarketInvalid ? "border-red-500" : ""}`}
+                                        />
+                                        {customMarketInvalid && (
+                                            <p className="text-xs text-red-500 mt-1">Please enter a valid 2-letter country code.</p>
+                                        )}
+                                    </div>
+                                )}
+                                <p className="text-xs text-zinc-500 mt-1">
+                                    {autoMarket ? (
+                                        <>Auto-detected: <span className="font-mono">{autoMarket}</span></>
+                                    ) : (
+                                        "Auto-detecting your country…"
+                                    )}
+                                </p>
+                            </div>
+
+                            {/* Privacy select */}
+                            <div className="flex flex-col">
+                                <label htmlFor="privacy" className="text-sm font-medium mb-1">
+                                    Privacy
+                                </label>
+                                <select
+                                    id="privacy"
+                                    value={privacyStatus}
+                                    onChange={(e) => setPrivacyStatus(e.target.value as PrivacyChoice)}
+                                    className="border rounded-md px-3 py-2 bg-background"
                                 >
+                                    <option value="PRIVATE">PRIVATE (default)</option>
+                                    <option value="UNLISTED">UNLISTED</option>
+                                    <option value="PUBLIC">PUBLIC</option>
+                                </select>
+                                <p className="text-xs text-zinc-500 mt-1">
+                                    Controls the visibility of the newly created YouTube Music playlist.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Clone button + dialogs */}
+                        <AlertDialog open={dialogOpen} onOpenChange={setdialogOpen}>
+                            <AlertDialogTrigger asChild>
+                                <Button disabled={isCloneDisabled} className="w-full" onClick={clonePlaylist}>
                                     Clone Playlist
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
-                                    <AlertDialogTitle>
-                                        Fetching playlist...
-                                    </AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        This may take a few minutes
-                                    </AlertDialogDescription>
+                                    <AlertDialogTitle>Fetching playlist...</AlertDialogTitle>
+                                    <AlertDialogDescription>This may take a few minutes</AlertDialogDescription>
                                 </AlertDialogHeader>
                             </AlertDialogContent>
                         </AlertDialog>
 
-                        <AlertDialog
-                            open={starPrompt}
-                            onOpenChange={setStarPrompt}
-                        >
+                        <AlertDialog open={starPrompt} onOpenChange={setStarPrompt}>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
                                     <AlertDialogTitle>
@@ -299,10 +393,7 @@ export default function InputFields() {
                                     </AlertDialogTitle>
                                     <AlertDialogDescription>
                                         <div className="ml-12 mb-2">
-                                            <p>
-                                                Please consider starring the
-                                                project on GitHub.
-                                            </p>
+                                            <p>Please consider starring the project on GitHub.</p>
                                             <p>It's free and helps me a lot!</p>
                                         </div>
                                     </AlertDialogDescription>
@@ -318,9 +409,7 @@ export default function InputFields() {
                                                 <FaGithub className="w-6 h-6" />
                                             </a>
                                         </Button>
-                                        <AlertDialogAction>
-                                            Clone Another Playlist
-                                        </AlertDialogAction>
+                                        <AlertDialogAction>Clone Another Playlist</AlertDialogAction>
                                     </div>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
@@ -328,79 +417,55 @@ export default function InputFields() {
                     </div>
                 </div>
             </div>
-            <AlertDialog
-                open={connectionError}
-                onOpenChange={setConnectionError}
-            >
+
+            {/* Connection Error */}
+            <AlertDialog open={connectionError} onOpenChange={setConnectionError}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Connection Error</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            {errorMessage}
-                        </AlertDialogDescription>
+                        <AlertDialogDescription>{errorMessage}</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogAction
-                            onClick={() => setConnectionError(false)}
-                        >
-                            Try Again
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={() => setConnectionError(false)}>Try Again</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Clone Error */}
             <AlertDialog open={cloneError} onOpenChange={setCloneError}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Clone Error</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            {cloneErrorMessage}
-                        </AlertDialogDescription>
+                        <AlertDialogDescription>{cloneErrorMessage}</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogAction onClick={() => setCloneError(false)}>
-                            Try Again
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={() => setCloneError(false)}>Try Again</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-            <AlertDialog
-                open={missedTracksDialog}
-                onOpenChange={setMissedTracksDialog}
-            >
+
+            {/* Missed tracks */}
+            <AlertDialog open={missedTracksDialog} onOpenChange={setMissedTracksDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            Some songs couldn't be found
-                        </AlertDialogTitle>
+                        <AlertDialogTitle>Some songs couldn't be found</AlertDialogTitle>
                         <AlertDialogDescription>
                             <div className="mt-2">
-                                <p className="mb-2">
-                                    {missedTracks.count} songs couldn't be found
-                                    on YouTube Music:
-                                </p>
+                                <p className="mb-2">{missedTracks.count} songs couldn't be found on YouTube Music:</p>
                                 <div className="max-h-[200px] overflow-y-auto">
                                     <ul className="list-disc list-inside">
-                                        {missedTracks.tracks.map(
-                                            (track, index) => (
-                                                <li
-                                                    key={index}
-                                                    className="text-sm"
-                                                >
-                                                    {track}
-                                                </li>
-                                            )
-                                        )}
+                                        {missedTracks.tracks.map((track, index) => (
+                                            <li key={index} className="text-sm">
+                                                {track}
+                                            </li>
+                                        ))}
                                     </ul>
                                 </div>
                             </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogAction
-                            onClick={() => setMissedTracksDialog(false)}
-                        >
-                            Close
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={() => setMissedTracksDialog(false)}>Close</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
