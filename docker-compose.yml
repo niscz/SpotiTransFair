@@ -9,7 +9,7 @@ services:
     environment:
       - FRONTEND_URL=http://localhost:5173
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request,sys;sys.exit(0) if urllib.request.urlopen('http://localhost:8001/').status==200 else sys.exit(1)\nPY"]
       interval: 10s
       timeout: 3s
       retries: 5
