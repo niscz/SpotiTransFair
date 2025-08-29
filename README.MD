@@ -7,6 +7,8 @@ Transfer your Spotify playlists to YouTube Music with a secure, high-performance
 
 ![SpotiTransFair Screenshot](./githubcontent/screenshot.png)
 
+![SpotiTransFair Screenshot](./githubcontent/screenshot_2.png)
+
 ## 🚀 Key Features
 
 -   **Seamless Playlist Transfer**: Convert any public Spotify playlist to a new YouTube Music playlist.
