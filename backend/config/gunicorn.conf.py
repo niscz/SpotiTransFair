@@ -1,6 +1,6 @@
 # backend/config/gunicorn.conf.py
 """
-Gunicorn-Konfigurationsdatei für die SpotiTransFair-Anwendung.
+Gunicorn configuration file for the SpotiTransFair application.
 """
 # pylint: disable=C0103
 
