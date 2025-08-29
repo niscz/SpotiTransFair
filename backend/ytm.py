@@ -83,6 +83,31 @@ def _add_tracks_resilient(ytmusic, playlist_id: str, video_ids: list[str]) -> li
         time.sleep(YTM_SLEEP_SECS)
     return failed
 
+def _fmt_label(t: dict) -> str:
+    # toleranter Formatter je nach Struktur deiner Track-Dicts
+    artists = t.get("artists") or t.get("artist") or []
+    if isinstance(artists, list):
+        artist = ", ".join(a.get("name", a) if isinstance(a, dict) else str(a) for a in artists)
+    else:
+        artist = str(artists)
+
+    album = (t.get("album", {}) or {}).get("name") if isinstance(t.get("album"), dict) else t.get("album") or ""
+    title = t.get("name") or t.get("title") or ""
+    return f"{artist} - {title}" if not album else f"{artist} (- {album}) - {title}"
+
+def _dedupe_with_labels(video_ids: list[str], tracks: list[dict]) -> tuple[list[str], list[str]]:
+    seen = set()
+    unique = []
+    dup_labels = []
+    for idx, vid in enumerate(video_ids):
+        if vid in seen:
+            # dieses Track-Objekt entspricht dem Duplikat
+            dup_labels.append(_fmt_label(tracks[idx]))
+        else:
+            seen.add(vid)
+            unique.append(vid)
+    return unique, dup_labels
+
 def search_track(ytmusic, track):
     """Searches for a single track on YouTube Music and returns its video ID or None."""
     q_title = track["name"].lower()
@@ -213,11 +238,9 @@ def create_ytm_playlist(
 ) -> Tuple[str | None, Dict[str, Any]]:
     """
     Creates a YouTube Music playlist from a Spotify playlist link.
-
     Returns (playlist_id or None if dry_run, missed_tracks dict).
     """
     temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
-
     try:
         ytmusicapi.setup(filepath=temp_file.name, headers_raw=_headers_to_raw(headers_raw))
         ytmusic = ytmusicapi.YTMusic(temp_file.name)
@@ -226,76 +249,85 @@ def create_ytm_playlist(
         name = title_override or get_playlist_name(playlist_link)
         video_ids, missed_tracks = get_video_ids(ytmusic, tracks)
 
-        # ---- Duplikate erkennen (gleiche videoId mehrmals) und melden
+        # -------- helper: hübsches Label für Track bauen
         def _fmt_track(t: Dict[str, Any]) -> str:
-            # robuste Extraktion
-            artist = (
-                t.get("artist")
-                or (t.get("artists") or [{}])[0].get("name")
-                or t.get("artists_str")
-                or "Unknown Artist"
-            )
+            # "artists" kann Liste aus Dicts oder Strings sein
+            artists = t.get("artists") or t.get("artist") or []
+            if isinstance(artists, list):
+                artist = ", ".join(
+                    a.get("name", a) if isinstance(a, dict) else str(a) for a in artists
+                )
+            else:
+                artist = str(artists or "Unknown Artist")
+
             album = (
-                t.get("album")
-                or t.get("album_name")
-                or (t.get("albumObj") or {}).get("name")
-                or ""
+                (t.get("album") or {}) .get("name")
+                if isinstance(t.get("album"), dict)
+                else t.get("album") or t.get("album_name") or ""
             )
             title = t.get("title") or t.get("name") or t.get("track") or "Unknown Title"
-            return f"{artist} (-{album}) - {title}" if album else f"{artist} - {title}"
+            return f"{artist} (- {album}) - {title}" if album else f"{artist} - {title}"
 
-        first_seen: Dict[str, int] = {}
+        # Labels für alle gefundenen IDs erstellen (Index-aligned)
+        labels: List[str] = []
+        for t in tracks:
+            try:
+                labels.append(_fmt_track(t))
+            except Exception:
+                labels.append("Unknown Artist - Unknown Title")
+
+        # Deduplizieren: gleiche videoId mehrfach → nur 1x einfügen, Rest als Duplikate melden
+        seen: set[str] = set()
         unique_video_ids: List[str] = []
-        duplicate_lines: List[str] = []
-        for idx, vid in enumerate(video_ids):
-            if vid in first_seen:
-                # diesen Track (zweiter Treffer) als Duplikat melden
-                try:
-                    duplicate_lines.append(_fmt_track(tracks[idx]))
-                except Exception:
-                    duplicate_lines.append(f"[duplicate videoId={vid}]")
-            else:
-                first_seen[vid] = idx
-                unique_video_ids.append(vid)
+        dup_labels: List[str] = []
+        # für spätere Fehler-Labels: Map VideoId → erstes Label
+        label_by_id: Dict[str, str] = {}
 
-        dup_count = len(video_ids) - len(unique_video_ids)
+        for vid, lab in zip(video_ids, labels):
+            if vid in seen:
+                dup_labels.append(lab)
+            else:
+                seen.add(vid)
+                unique_video_ids.append(vid)
+                label_by_id.setdefault(vid, lab)
+
+        dup_count = len(dup_labels)
         if dup_count:
             logging.info("Found %d duplicate(s) → will skip them.", dup_count)
-        # in die Missed-Struktur aufnehmen (neues Feld)
-        missed_tracks = missed_tracks or {}
-        missed_tracks["duplicates"] = {
-            "count": dup_count,
-            "lines": duplicate_lines,
-        }
 
-        # wir fügen nur die eindeutigen ein
+        # Missed-Struktur robust aufbauen und 'duplicates' hinzufügen
+        missed: Dict[str, Any] = {
+            "count": int(missed_tracks.get("count", 0)) if isinstance(missed_tracks, dict) else 0,
+            "tracks": list(missed_tracks.get("tracks", [])) if isinstance(missed_tracks, dict) else [],
+        }
+        missed["duplicates"] = {"count": dup_count, "items": dup_labels}
+
+        # nur eindeutige IDs einfügen
         video_ids = unique_video_ids
 
         if dry_run:
-            return None, missed_tracks
+            return None, missed
 
-        # 1) Create Empty/Initial-Playlist
+        # 1) Playlist erstellen
         playlist_id = ytmusic.create_playlist(
             title=name,
             description="Created with SpotiTransFair",
-            privacy_status=privacy_status
+            privacy_status=privacy_status,
         )
 
-        # 2) Add Items in Batches (mit Logging & Fehleraufsammlung)
+        # 2) Einfügen in Batches (resilient)
         time.sleep(YTM_POST_CREATE_SLEEP)
-
         failed_inserts = _add_tracks_resilient(ytmusic, playlist_id, video_ids)
 
         if failed_inserts:
             logging.warning("Insert failed for %d/%d tracks", len(failed_inserts), len(video_ids))
-            missed_tracks = {
-                "count": missed_tracks.get("count", 0) + len(failed_inserts),
-                "tracks": missed_tracks.get("tracks", []) + [
-                    {"videoId": vid, "reason": "insert_failed"} for vid in failed_inserts
-                ],
-            }
+            # Zählung erhöhen + hübsche Labels für die Fehlschläge anhängen
+            missed["count"] += len(failed_inserts)
+            missed["tracks"].extend(
+                [label_by_id.get(vid, f"[insert_failed] {vid}") for vid in failed_inserts]
+            )
 
-        return playlist_id, missed_tracks
+        return playlist_id, missed
 
     finally:
         temp_file.close()
