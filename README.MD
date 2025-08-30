@@ -169,16 +169,16 @@ Once the containers are running, open your web browser and navigate to:
 | `WEB_CONCURRENCY`        | `3`                     | Gunicorn workers (backend)                   |
 | `FRONTEND_URL`           | `http://localhost:5173` | CORS origin (dev only)                       |
 
-| Hinweis: Rate Limiting ist pro Prozess. Bei mehreren Gunicorn-Workern wirkt das jeweils per Worker (ausreichend für Self-Hosting).
+**Note:** Rate limiting is **per process**. If you run multiple Gunicorn workers, the token bucket applies **per worker** (which is fine for self-hosting).
 
 ## 🧠 Known Limitations
 
--   **Auth headers** können ablaufen: wenn die Suche 0 Treffer liefert, prüfe zuerst die Header.
--   **Regional availability**: Manche Titel sind in YTM/Spotify nicht verfügbar oder nur unter anderem Artist/Release.
--   **Private Spotify playlists**: Mit Client-Credentials nicht lesbar. (Public required.)
--   **Best Effort Rate Limit**: Globaler Token-Bucket pro Prozess; harte API-Limits der Plattformen sind nicht öffentlich dokumentiert.
+- **Auth headers can expire:** If a search returns 0 results, first re-check your YouTube Music headers.
+- **Regional availability:** Some tracks aren’t available on YTM/Spotify in all regions or only under different artist/release metadata.
+- **Private Spotify playlists:** Not readable with Client-Credentials flow (playlist must be **public**).
+- **Best-effort rate limit:** A global token bucket per process; hard platform limits are not publicly documented.
 
-## 🐳 Dev Setup (ohne Docker)
+## 🐳 Dev Setup (without Docker)
 
 Optional:
 
@@ -198,7 +198,8 @@ Optional:
     pnpm dev
     ```
 
-Vite proxyt `/api` zum Backend via Nginx in Docker oder lokalem Backend (passe ggf. `vite.config.ts` an).
+Vite proxies `/api` to the backend via Nginx in Docker or to your **local** backend.
+If you run the backend locally, adjust `vite.config.ts` as needed.
 
 ## 📄 License
 
