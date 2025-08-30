@@ -26,7 +26,7 @@ _The main interface for creating a playlist._
 
 ## 🌱 Project Evolution: From Concept to Production-Ready
 
-This project is a heavily refactored, secured, and dockerized version of the original concept from the [SpotTransfer](https://github.com/Pushan2005/SpotTransfer) repository by **[Pushan Saha](https://github.com/Pushan2005)**.
+This project is a heavily refactored, secured, and dockerized version of the original concept from the [SpotTransfer](https://github.com/Pushan2005/SpotTransfer) repository by **[Pushan2005](https://github.com/Pushan2005)**.
 
 The goal was to take this great idea and re-engineer it into a robust, scalable, and secure application that follows modern DevOps and software engineering best practices.
 
@@ -207,4 +207,4 @@ This project is licensed under the **GNU General Public License v3.0**. As a der
 
 ## 🙏 Acknowledgments
 
--   A big thank you to **[Pushan Saha](https://github.com/Pushan2005)** for creating the [original SpotTransfer project](https://github.com/Pushan2005/SpotTransfer) that inspired this enhanced version.
+-   A big thank you to **[Pushan2005](https://github.com/Pushan2005)** for creating the [original SpotTransfer project](https://github.com/Pushan2005/SpotTransfer) that inspired this enhanced version.
