@@ -1,4 +1,5 @@
 // frontend/src/nav-bar.tsx
+import ThemeToggle from "@/components/theme-toggle";
 import { FaGithub } from "react-icons/fa";
 import { Link } from "react-router-dom";
 
@@ -29,6 +30,7 @@ export default function Navbar() {
                         GitHub
                     </span>
                 </a>
+                <ThemeToggle />
             </div>
         </nav>
     );
