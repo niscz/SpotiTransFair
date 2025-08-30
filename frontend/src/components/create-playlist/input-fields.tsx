@@ -5,7 +5,6 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { FaExclamationCircle } from "react-icons/fa";
 import React, { useEffect, useMemo, useState } from "react";
-
 import {
     AlertDialog,
     AlertDialogContent,
@@ -17,9 +16,10 @@ import {
     AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { FaGithub } from "react-icons/fa";
-import { CheckIcon } from "@/components/ui/check.tsx";
+import { CheckIcon } from "@/components/ui/check";
+import { LuLoader, LuX } from "react-icons/lu";
 
-// handliche Liste gängiger Spotify-Märkte (kurz gehalten, inkl. EU/NA/SA/AS/OCE)
+// --- Types ---
 const MARKET_CHOICES = [
     "US", "GB", "DE", "FR", "IT", "ES", "NL", "SE", "PL", "IE",
     "CA", "BR", "AR", "MX", "CL", "CO",
@@ -31,14 +31,46 @@ type MarketChoice = typeof MARKET_CHOICES[number];
 const PRIVACY_CHOICES = ["PRIVATE", "UNLISTED", "PUBLIC"] as const;
 type PrivacyChoice = typeof PRIVACY_CHOICES[number];
 
-export default function InputFields() {
-    // ---- types for API result ----
-    type Duplicates = { count: number; lines: string[] };
-    type MissedTracks = { count: number; tracks: string[]; duplicates?: Duplicates };
+type YtmFilter = "songs" | "videos" | "uploads";
 
+interface DuplicatesData { count: number; items: string[] }
+interface MissedTracksData {
+    count: number;
+    tracks: string[];
+    duplicates?: DuplicatesData;
+    _stats?: { found_total?: number; inserted?: number };
+}
+interface CloneSuccessResponse {
+    message: string;
+    missed_tracks: MissedTracksData;
+    playlist_id?: string;
+    playlist_url?: string;
+}
+interface ErrorResponse {
+    error?: { code: string; message: string };
+    message?: string;
+}
+interface RetrySuccessItem {
+    videoId: string;
+    title?: string;
+    artists?: { name: string }[];
+}
+interface RetrySearchResponse {
+    results?: RetrySuccessItem[];
+}
+
+interface MissedTrackItem {
+    originalQuery: string;
+    editedQuery: string;
+    status: "pending" | "retrying" | "success" | "failed";
+    filter: YtmFilter;
+    suggestions: RetrySuccessItem[];
+}
+
+export default function InputFields() {
+    // --- Component State ---
     const [authHeaders, setAuthHeaders] = useState("");
     const [serverOnline, setServerOnline] = useState(false);
-
     const [isValidUrl, setIsValidUrl] = useState(true);
     const [dialogOpen, setdialogOpen] = useState(false);
     const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
@@ -48,39 +80,52 @@ export default function InputFields() {
     const [cloneError, setCloneError] = useState(false);
     const [cloneErrorMessage, setCloneErrorMessage] = useState<React.ReactNode>("");
     const [missedTracksDialog, setMissedTracksDialog] = useState(false);
-    const [missedTracks, setMissedTracks] = useState<MissedTracks>({
-        count: 0,
-        tracks: [],
-        duplicates: { count: 0, lines: [] },
-    });
+    const [missedTracks, setMissedTracks] = useState<MissedTrackItem[]>([]);
+    const [ignoredDuplicates, setIgnoredDuplicates] = useState<DuplicatesData>({ count: 0, items: [] });
 
-    // NEW: Market & Privacy UI state
+    // Validate Headers
+    const [headersValid, setHeadersValid] = useState<null | boolean>(null);
+    const [headersValidateBusy, setHeadersValidateBusy] = useState(false);
+    const [headersValidateMsg, setHeadersValidateMsg] = useState<string>("");
+
+    // Market & Privacy
     const [market, setMarket] = useState<MarketChoice | "CUSTOM">("US");
     const [customMarket, setCustomMarket] = useState("");
     const [autoMarket, setAutoMarket] = useState<string | null>(null);
     const [privacyStatus, setPrivacyStatus] = useState<PrivacyChoice>("PRIVATE");
 
+    // Preview
+    const [previewBusy, setPreviewBusy] = useState(false);
+    const [preview, setPreview] = useState<{ name: string; track_count: number } | null>(null);
+    const [previewError, setPreviewError] = useState<string>("");
+
+    // Update existing
+    const [updateExisting, setUpdateExisting] = useState(false);
+    const [existingPlaylistUrl, setExistingPlaylistUrl] = useState("");
+
+    // Playlist ID from clone for later adds
+    const [createdPlaylistId, setCreatedPlaylistId] = useState<string | null>(null);
+
     const { playlistUrl, setPlaylistUrl } = usePlaylist();
 
-    // --- helpers ---
+    // --- Memoized Values ---
     const effectiveMarket = useMemo(() => {
-        if (market === "CUSTOM") {
-            return (customMarket || "").trim().toUpperCase();
-        }
+        if (market === "CUSTOM") return (customMarket || "").trim().toUpperCase();
         return market;
     }, [market, customMarket]);
 
-    const customMarketInvalid =
-        market === "CUSTOM" && !/^[A-Z]{2}$/.test(effectiveMarket);
+    const customMarketInvalid = market === "CUSTOM" && !/^[A-Z]{2}$/.test(effectiveMarket);
+
+    const validateUrl = (url: string) =>
+        /^(?:https?:\/\/)?open\.spotify\.com\/playlist\/.+/.test(url);
 
     const isCloneDisabled =
         !isValidUrl ||
         !authHeaders ||
         playlistUrl.trim() === "" ||
         !serverOnline ||
-        customMarketInvalid;
-
-    const validateUrl = (url: string) => /^(?:https?:\/\/)?open\.spotify\.com\/playlist\/.+/.test(url);
+        customMarketInvalid ||
+        (updateExisting && existingPlaylistUrl.trim() === "");
 
     const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const url = e.target.value;
@@ -88,116 +133,38 @@ export default function InputFields() {
         setIsValidUrl(validateUrl(url) || url === "");
     };
 
-    // Auto-Market per IP, Fallback: Browser-Locale
+    // --- Effects ---
     useEffect(() => {
-        let cancelled = false;
-
-        async function detectMarket() {
-            // 1) IP-Geolocation (ohne API-Key, CORS-freundlich)
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        const qs = tz ? `?tz=${encodeURIComponent(tz)}` : "";
+        (async () => {
             try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 2500);
-                const res = await fetch("https://ipwho.is/?fields=country_code", {
-                    signal: controller.signal,
-                });
-                clearTimeout(timeout);
-                const data = await res.json().catch(() => null);
-                const cc = (data?.country_code || "").toUpperCase();
-                if (!cancelled && /^[A-Z]{2}$/.test(cc)) {
-                    setAutoMarket(cc);
-                    if (MARKET_CHOICES.includes(cc as MarketChoice)) {
-                        setMarket(cc as MarketChoice);
-                    } else {
-                        setMarket("CUSTOM");
-                        setCustomMarket(cc);
-                    }
-                    return;
+                const res = await fetch(`/api/market/guess${qs}`, { method: "GET" });
+                if (!res.ok) throw new Error("guess failed");
+                const data: { market: string } = await res.json();
+                const cc = (data.market || "").toUpperCase();
+                setAutoMarket(cc || null);
+                if (cc && (MARKET_CHOICES as readonly string[]).includes(cc)) {
+                    setMarket(cc as MarketChoice);
+                } else if (cc) {
+                    setMarket("CUSTOM");
+                    setCustomMarket(cc);
                 }
             } catch {
-                // ignore, fallback below
-            }
-            // 2) Fallback: navigator.language → "en-US" → "US"
-            const loc = (navigator.language || "").split("-")[1];
-            const cc = (loc || "").toUpperCase();
-            if (!cancelled && /^[A-Z]{2}$/.test(cc)) {
-                setAutoMarket(cc);
-                if (MARKET_CHOICES.includes(cc as MarketChoice)) {
+                const loc = (navigator.language || "").split("-")[1];
+                const cc = (loc || "").toUpperCase();
+                setAutoMarket(/^[A-Z]{2}$/.test(cc) ? cc : null);
+                if (cc && MARKET_CHOICES.includes(cc as MarketChoice)) {
                     setMarket(cc as MarketChoice);
-                } else {
+                } else if (cc) {
                     setMarket("CUSTOM");
                     setCustomMarket(cc);
                 }
             }
-        }
-
-        detectMarket();
-        return () => {
-            cancelled = true;
-        };
+        })();
     }, []);
 
-    async function clonePlaylist() {
-        const body = {
-            playlist_link: playlistUrl,
-            auth_headers: authHeaders,
-            market: effectiveMarket || "US",
-            privacy_status: privacyStatus,
-        };
-
-        try {
-            setdialogOpen(true);
-            const res = await fetch(`/api/create`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            const data = await res.json();
-
-            if (res.ok) {
-                // tolerate older backend shapes gracefully
-                const mt = (data?.missed_tracks ?? {}) as Partial<MissedTracks>;
-                const missingCount = Number(mt?.count ?? 0);
-                const tracks = Array.isArray(mt?.tracks) ? mt!.tracks : [];
-                const dupCount = Number(mt?.duplicates?.count ?? 0);
-                const dupLines = Array.isArray(mt?.duplicates?.lines) ? mt!.duplicates!.lines : [];
-
-                setMissedTracks({
-                    count: missingCount,
-                    tracks,
-                    duplicates: { count: dupCount, lines: dupLines },
-                });
-
-                // Öffne Dialog, wenn fehlende Titel ODER Duplikate vorhanden sind
-                if (missingCount > 0 || dupCount > 0) setMissedTracksDialog(true);
-                setStarPrompt(true);
-            } else if (res.status === 500) {
-                setCloneError(true);
-                setCloneErrorMessage(
-                    <>
-                        Server timeout while cloning playlist. Please try again or{" "}
-                        <a
-                            href="https://github.com/niscz/SpotiTransFair/issues/new/choose"
-                            className="text-blue-500 hover:underline"
-                        >
-                            report this issue
-                        </a>
-                    </>
-                );
-            } else {
-                setCloneError(true);
-                setCloneErrorMessage(
-                    // nicer backend errors (new API returns {error:{code,message}})
-                    data?.error?.message || data?.message || "Failed to clone playlist"
-                );
-            }
-        } catch {
-            setCloneError(true);
-            setCloneErrorMessage("Network error while cloning playlist");
-        } finally {
-            setdialogOpen(false);
-        }
-    }
-
+    // --- API Calls ---
     async function testConnection() {
         setConnectionDialogOpen(true);
         setConnectionError(false);
@@ -219,8 +186,7 @@ export default function InputFields() {
                             className="text-blue-500 hover:underline"
                         >
                             report this issue on GitHub
-                        </a>
-                        .
+                        </a>.
                     </>
                 );
             }
@@ -242,134 +208,294 @@ export default function InputFields() {
         }
     }
 
+    async function validateHeaders() {
+        setHeadersValidateBusy(true);
+        setHeadersValid(null);
+        setHeadersValidateMsg("");
+        try {
+            const res = await fetch(`/api/validate-headers`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ auth_headers: authHeaders }),
+            });
+            const data = await res.json();
+            if (res.ok && data?.valid) {
+                setHeadersValid(true);
+                setHeadersValidateMsg("Headers valid.");
+            } else {
+                setHeadersValid(false);
+                setHeadersValidateMsg(data?.error?.message || data?.message || "Validation failed.");
+            }
+        } catch (e) {
+            setHeadersValid(false);
+            setHeadersValidateMsg("Network error during validation.");
+        } finally {
+            setHeadersValidateBusy(false);
+        }
+    }
+
+    async function loadPreview() {
+        if (!validateUrl(playlistUrl)) return;
+        setPreview(null);
+        setPreviewError("");
+        setPreviewBusy(true);
+        try {
+            const u = new URLSearchParams({ playlist_link: playlistUrl, market: effectiveMarket || "US" }).toString();
+            const res = await fetch(`/api/spotify/preview?${u}`);
+            const data = await res.json();
+            if (res.ok) {
+                setPreview({ name: data.name, track_count: data.track_count });
+            } else {
+                setPreviewError(data?.error?.message || data?.message || "Preview failed");
+            }
+        } catch {
+            setPreviewError("Network error while previewing playlist");
+        } finally {
+            setPreviewBusy(false);
+        }
+    }
+
+    async function clonePlaylist() {
+        const body: Record<string, any> = {
+            playlist_link: playlistUrl,
+            auth_headers: authHeaders,
+            market: effectiveMarket || "US",
+            privacy_status: privacyStatus,
+        };
+        if (updateExisting && existingPlaylistUrl.trim()) {
+            body["target_playlist_id"] = extractYtmPlaylistId(existingPlaylistUrl.trim());
+        }
+
+        try {
+            setdialogOpen(true);
+            const res = await fetch(`/api/create`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+
+            if (res.ok) {
+                const data = (await res.json()) as CloneSuccessResponse;
+                setCreatedPlaylistId(data.playlist_id ?? null);
+                const mt = data.missed_tracks;
+
+                if (mt && mt.count > 0) {
+                    setMissedTracks(
+                        mt.tracks.map((track) => ({
+                            originalQuery: track,
+                            editedQuery: track,
+                            status: "pending",
+                            filter: "songs",
+                            suggestions: [],
+                        }))
+                    );
+                } else {
+                    setMissedTracks([]);
+                }
+
+                if (mt && mt.duplicates && mt.duplicates.count > 0) {
+                    setIgnoredDuplicates(mt.duplicates);
+                } else {
+                    setIgnoredDuplicates({ count: 0, items: [] });
+                }
+
+                if ((mt?.count ?? 0) > 0 || (mt?.duplicates?.count ?? 0) > 0) {
+                    setMissedTracksDialog(true);
+                } else {
+                    setStarPrompt(true);
+                }
+            } else {
+                const data = (await res.json()) as ErrorResponse;
+                setCloneError(true);
+                setCloneErrorMessage(data.error?.message || data.message || "Failed to clone playlist");
+            }
+        } catch {
+            setCloneError(true);
+            setCloneErrorMessage("Network error while cloning playlist");
+        } finally {
+            setdialogOpen(false);
+        }
+    }
+
+    async function retrySearch(index: number) {
+        const t = missedTracks[index];
+        if (!t || t.status === "retrying" || t.status === "success") return;
+        const updated = [...missedTracks];
+        updated[index].status = "retrying";
+        updated[index].suggestions = [];
+        setMissedTracks(updated);
+
+        try {
+            const res = await fetch(`/api/ytm/search`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    query: t.editedQuery,
+                    filter: t.filter,
+                    auth_headers: authHeaders,
+                    top_k: 5,
+                }),
+            });
+            const data = (await res.json()) as RetrySearchResponse;
+            const finalTracks = [...updated];
+            if (res.ok && Array.isArray(data.results) && data.results.length > 0) {
+                finalTracks[index].status = "pending";
+                finalTracks[index].suggestions = data.results;
+            } else {
+                finalTracks[index].status = "failed";
+            }
+            setMissedTracks(finalTracks);
+        } catch {
+            const finalTracks = [...updated];
+            finalTracks[index].status = "failed";
+            setMissedTracks(finalTracks);
+        }
+    }
+
+    async function addSuggestion(videoId: string, index: number) {
+        if (!createdPlaylistId || !videoId) return;
+        const updated = [...missedTracks];
+        updated[index].status = "retrying";
+        setMissedTracks(updated);
+        try {
+            const res = await fetch(`/api/ytm/add`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    playlist_id: createdPlaylistId,
+                    video_id: videoId,
+                    auth_headers: authHeaders,
+                }),
+            });
+            if (res.ok) {
+                const final = [...missedTracks];
+                final[index].status = "success";
+                setMissedTracks(final);
+            } else {
+                const final = [...missedTracks];
+                final[index].status = "failed";
+                setMissedTracks(final);
+            }
+        } catch {
+            const final = [...missedTracks];
+            final[index].status = "failed";
+            setMissedTracks(final);
+        }
+    }
+
+    function extractYtmPlaylistId(urlOrId: string) {
+        if (/^PL|^OLAK/.test(urlOrId)) return urlOrId;
+        try {
+            const u = new URL(urlOrId);
+            const id = u.searchParams.get("list");
+            return id || urlOrId;
+        } catch {
+            return urlOrId;
+        }
+    }
+
     return (
         <>
-            <div className="w-full flex items-center justify-around">
+            <div className="w-full flex items-start justify-around">
                 {/* LEFT: Auth headers */}
-                <div className="flex flex-col gap-3 items-center justify-center">
-                    <div className="space-y-1">
-                        <h1 className="text-lg font-semibold">Paste headers here</h1>
+                <div className="flex flex-col gap-3 items-center justify-center w-[40vw]">
+                    <div className="space-y-1 text-center">
+                        <h1 className="text-lg font-semibold">Paste Headers Here</h1>
                     </div>
                     <Textarea
-                        placeholder="Paste your headers here"
+                        placeholder="Paste your raw request headers here"
                         value={authHeaders}
-                        onChange={(e) => setAuthHeaders(e.target.value)}
+                        onChange={(e) => { setAuthHeaders(e.target.value); setHeadersValid(null); }}
                         id="auth-headers"
-                        className="w-[40vw] h-[50vh]"
+                        className="h-[50vh] min-h-[300px]"
                     />
+                    <div className="flex gap-2 w-full">
+                        <Button className="w-full" variant="secondary" onClick={validateHeaders} disabled={!authHeaders || headersValidateBusy}>
+                            {headersValidateBusy ? <span className="inline-flex gap-2 items-center"><LuLoader className="animate-spin" /> Validating…</span> : "Validate headers"}
+                        </Button>
+                    </div>
+                    {headersValid === true && <p className="text-green-500 text-sm mt-1">✓ {headersValidateMsg || "Headers valid."}</p>}
+                    {headersValid === false && <p className="text-red-500 text-sm mt-1">✗ {headersValidateMsg || "Invalid headers."}</p>}
                 </div>
 
                 {/* RIGHT: Server connect + playlist + options */}
-                <div className="flex flex-col gap-12 items-start justify-center">
+                <div className="flex flex-col gap-8 items-start justify-center w-[40vw]">
                     {/* connect */}
                     <div className="flex flex-col w-full gap-3 items-center justify-center">
                         <div className="space-y-1 w-full">
-                            <h1 className="text-lg font-semibold w-full">You need to be connected to the server</h1>
-                            {serverOnline && <p className="text-green-500 text-sm">Connection Successful</p>}
+                            <h1 className="text-lg font-semibold w-full">1. Connect to Server</h1>
+                            {serverOnline && <p className="text-green-500 text-sm">✓ Connection Successful</p>}
                         </div>
                         <AlertDialog open={connectionDialogOpen} onOpenChange={setConnectionDialogOpen}>
                             <AlertDialogTrigger asChild>
-                                <Button className="w-full" onClick={testConnection}>
-                                    Connect
-                                </Button>
+                                <Button className="w-full" onClick={testConnection}>Connect</Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
                                     <AlertDialogTitle>Requesting connection...</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                        Please wait till the server comes online. This may take upto a minute.
+                                        Please wait till the server comes online.
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                             </AlertDialogContent>
                         </AlertDialog>
                     </div>
 
-                    {/* playlist URL */}
-                    <div className="flex flex-col gap-3 items-start justify-center">
+                    {/* playlist URL & options */}
+                    <div className="flex flex-col gap-3 items-start justify-center w-full">
                         <div className="space-y-1">
-                            <h1 className="text-lg font-semibold">Paste Spotify playlist URL here</h1>
+                            <h1 className="text-lg font-semibold">2. Provide Playlist & Options</h1>
                             <div className="flex items-center gap-2">
                                 <FaExclamationCircle />
                                 <p className="text-sm text-gray-500">Make sure the playlist is public</p>
                             </div>
-                            <div className="flex items-center gap-2 mt-2">
-                                <FaExclamationCircle className="text-orange-500" />
-                                <p className="text-sm text-gray-500">
-                                    Timeout issues are common due to server limitations.
-                                    <br />
-                                    If you experience them, consider{" "}
-                                    <a
-                                        href="https://github.com/niscz/SpotiTransFair/?tab=readme-ov-file#-quick-start"
-                                        className="text-blue-500 hover:underline"
-                                    >
-                                        self-hosting
-                                    </a>{" "}
-                                    for better reliability.
-                                </p>
-                            </div>
                         </div>
-                        <Input
-                            placeholder="Paste your playlist URL here"
-                            value={playlistUrl}
-                            onChange={handleUrlChange}
-                            id="playlist-name"
-                            className={`w-full ${!isValidUrl ? "border-red-500" : ""}`}
-                        />
-                        {!isValidUrl && <p className="text-red-500 text-sm">Please enter a valid Spotify playlist URL</p>}
 
-                        {/* NEW: Options (Market + Privacy) */}
-                        <div className="mt-4 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Market select */}
+                        {/* Spotify URL */}
+                        <div className="flex gap-2 w-full">
+                            <Input
+                                placeholder="Paste your Spotify playlist URL here"
+                                value={playlistUrl}
+                                onChange={handleUrlChange}
+                                id="playlist-url"
+                                className={`w-full ${!isValidUrl ? "border-red-500" : ""}`}
+                            />
+                            <Button variant="outline" onClick={loadPreview} disabled={!isValidUrl || !playlistUrl || previewBusy}>
+                                {previewBusy ? "Preview..." : "Preview"}
+                            </Button>
+                        </div>
+                        {!isValidUrl && <p className="text-red-500 text-sm">Please enter a valid Spotify playlist URL</p>}
+                        {preview && <p className="text-sm text-zinc-500">Name: <span className="font-medium">{preview.name}</span> • Tracks: {preview.track_count}</p>}
+                        {previewError && <p className="text-red-500 text-sm">{previewError}</p>}
+
+                        {/* Options (Market + Privacy) */}
+                        <div className="mt-2 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="flex flex-col">
-                                <label htmlFor="market" className="text-sm font-medium mb-1">
-                                    Market
-                                </label>
-                                <div className="flex items-center gap-2">
-                                    <select
-                                        id="market"
-                                        value={market === "CUSTOM" ? "CUSTOM" : market}
-                                        onChange={(e) => {
-                                            const v = e.target.value as MarketChoice | "CUSTOM";
-                                            if (v === "CUSTOM") setMarket("CUSTOM");
-                                            else setMarket(v);
-                                        }}
-                                        className="border rounded-md px-3 py-2 bg-background"
-                                    >
-                                        {MARKET_CHOICES.map((m) => (
-                                            <option key={m} value={m}>
-                                                {m}
-                                            </option>
-                                        ))}
-                                        <option value="CUSTOM">Other…</option>
-                                    </select>
-                                </div>
+                                <label htmlFor="market" className="text-sm font-medium mb-1">Market</label>
+                                <select
+                                    id="market"
+                                    value={market}
+                                    onChange={(e) => setMarket(e.target.value as MarketChoice | "CUSTOM")}
+                                    className="border rounded-md px-3 py-2 bg-background"
+                                >
+                                    {MARKET_CHOICES.map((m) => <option key={m} value={m}>{m}</option>)}
+                                    <option value="CUSTOM">Other…</option>
+                                </select>
                                 {market === "CUSTOM" && (
-                                    <div className="mt-2">
-                                        <Input
-                                            placeholder="Enter 2-letter country code (e.g., US)"
-                                            value={customMarket}
-                                            onChange={(e) => setCustomMarket(e.target.value)}
-                                            className={`${customMarketInvalid ? "border-red-500" : ""}`}
-                                        />
-                                        {customMarketInvalid && (
-                                            <p className="text-xs text-red-500 mt-1">Please enter a valid 2-letter country code.</p>
-                                        )}
-                                    </div>
+                                    <Input
+                                        placeholder="e.g., US"
+                                        value={customMarket}
+                                        onChange={(e) => setCustomMarket(e.target.value)}
+                                        className={`mt-2 ${customMarketInvalid ? "border-red-500" : ""}`}
+                                    />
                                 )}
-                                <p className="text-xs text-zinc-500 mt-1">
-                                    {autoMarket ? (
-                                        <>Auto-detected: <span className="font-mono">{autoMarket}</span></>
-                                    ) : (
-                                        "Auto-detecting your country…"
-                                    )}
+                                <p className="text-xs text-zinc-500 mt-1 h-4">
+                                    {autoMarket ? `Auto-detected (from browser): ${autoMarket}` : "Could not derive market from browser language"}
                                 </p>
                             </div>
 
-                            {/* Privacy select */}
                             <div className="flex flex-col">
-                                <label htmlFor="privacy" className="text-sm font-medium mb-1">
-                                    Privacy
-                                </label>
+                                <label htmlFor="privacy" className="text-sm font-medium mb-1">Privacy</label>
                                 <select
                                     id="privacy"
                                     value={privacyStatus}
@@ -380,52 +506,60 @@ export default function InputFields() {
                                     <option value="UNLISTED">UNLISTED</option>
                                     <option value="PUBLIC">PUBLIC</option>
                                 </select>
-                                <p className="text-xs text-zinc-500 mt-1">
-                                    Controls the visibility of the newly created YouTube Music playlist.
-                                </p>
+                                <p className="text-xs text-zinc-500 mt-1 h-4">Playlist visibility.</p>
                             </div>
                         </div>
 
-                        {/* Clone button + dialogs */}
+                        {/* Update existing */}
+                        <div className="mt-2 w-full border rounded-md p-3">
+                            <label className="flex items-center gap-2">
+                                <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
+                                <span className="text-sm font-medium">Update existing YouTube Music playlist (add new tracks only)</span>
+                            </label>
+                            {updateExisting && (
+                                <Input
+                                    className="mt-2"
+                                    placeholder="https://music.youtube.com/playlist?list=..."
+                                    value={existingPlaylistUrl}
+                                    onChange={(e) => setExistingPlaylistUrl(e.target.value)}
+                                />
+                            )}
+                        </div>
+
+                        {/* Clone */}
                         <AlertDialog open={dialogOpen} onOpenChange={setdialogOpen}>
                             <AlertDialogTrigger asChild>
-                                <Button disabled={isCloneDisabled} className="w-full" onClick={clonePlaylist}>
-                                    Clone Playlist
-                                </Button>
+                                <Button disabled={isCloneDisabled} className="w-full mt-4" onClick={clonePlaylist}>Clone Playlist</Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
-                                    <AlertDialogTitle>Fetching playlist...</AlertDialogTitle>
-                                    <AlertDialogDescription>This may take a few minutes</AlertDialogDescription>
+                                    <AlertDialogTitle>Cloning playlist...</AlertDialogTitle>
+                                    <AlertDialogDescription>This may take a few minutes.</AlertDialogDescription>
                                 </AlertDialogHeader>
                             </AlertDialogContent>
                         </AlertDialog>
 
+                        {/* Success prompt */}
                         <AlertDialog open={starPrompt} onOpenChange={setStarPrompt}>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
                                     <AlertDialogTitle>
-                                        <div className="flex items-center">
-                                            <CheckIcon />
-                                            Your Playlist has been cloned!
-                                        </div>
+                                        <div className="flex items-center"><CheckIcon />Your Playlist has been cloned!</div>
                                     </AlertDialogTitle>
                                     <AlertDialogDescription>
                                         <div className="ml-12 mb-2">
-                                            <p>Please consider starring the project on GitHub.</p>
+                                            <p>Please consider starring the project on{" "}
+                                                <a href="https://github.com/niscz/SpotiTransFair" target="_blank" rel="noopener noreferrer" className="hover:underline">GitHub</a>.
+                                            </p>
                                             <p>It's free and helps me a lot!</p>
                                         </div>
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                     <div className="flex items-center justify-between w-full">
-                                        <Button>
-                                            <a
-                                                className="w-full flex items-center gap-2"
-                                                href="https://github.com/niscz/SpotiTransFair"
-                                            >
-                                                ⭐ on GitHub
-                                                <FaGithub className="w-6 h-6" />
+                                        <Button asChild>
+                                            <a className="w-full flex items-center gap-2" href="https://github.com/niscz/SpotiTransFair" target="_blank" rel="noopener noreferrer">
+                                                ⭐ on GitHub <FaGithub className="w-6 h-6" />
                                             </a>
                                         </Button>
                                         <AlertDialogAction>Clone Another Playlist</AlertDialogAction>
@@ -435,107 +569,118 @@ export default function InputFields() {
                         </AlertDialog>
                     </div>
                 </div>
+
+                {/* Error dialogs */}
+                <AlertDialog open={connectionError} onOpenChange={setConnectionError}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Connection Error</AlertDialogTitle>
+                            <AlertDialogDescription>{errorMessage}</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogAction onClick={() => setConnectionError(false)}>Try Again</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+
+                <AlertDialog open={cloneError} onOpenChange={setCloneError}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Clone Error</AlertDialogTitle>
+                            <AlertDialogDescription>{cloneErrorMessage}</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogAction onClick={() => setCloneError(false)}>Try Again</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+
+                {/* Missed tracks dialog (with filter + suggestions) */}
+                <AlertDialog open={missedTracksDialog} onOpenChange={setMissedTracksDialog}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Transfer Report</AlertDialogTitle>
+                            <AlertDialogDescription asChild>
+                                <div className="mt-2 text-foreground">
+                                    {missedTracks.length > 0 && (
+                                        <>
+                                            <p className="mb-2 font-medium">
+                                                {missedTracks.filter(t => t.status !== 'success').length} tracks couldn't be found. Edit the query, choose a filter and retry. You can add a suggestion directly.
+                                            </p>
+                                            <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2 border-b pb-4 mb-4">
+                                                {missedTracks.map((track, index) => (
+                                                    <div key={index} className="flex flex-col gap-2 border rounded-md p-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <select
+                                                                className="border rounded-md px-2 py-1 text-sm bg-background"
+                                                                value={track.filter}
+                                                                onChange={(e) => {
+                                                                    const final = [...missedTracks];
+                                                                    final[index].filter = e.target.value as YtmFilter;
+                                                                    setMissedTracks(final);
+                                                                }}
+                                                            >
+                                                                <option value="songs">Songs</option>
+                                                                <option value="videos">Videos</option>
+                                                                <option value="uploads">Uploads</option>
+                                                            </select>
+                                                            <Input
+                                                                value={track.editedQuery}
+                                                                onChange={(e) => {
+                                                                    const newTracks = [...missedTracks];
+                                                                    newTracks[index].editedQuery = e.target.value;
+                                                                    if (newTracks[index].status === 'failed') newTracks[index].status = 'pending';
+                                                                    setMissedTracks(newTracks);
+                                                                }}
+                                                                className="text-sm flex-grow bg-zinc-100 dark:bg-zinc-800"
+                                                                disabled={track.status === 'success'}
+                                                            />
+                                                            {track.status === 'pending' && <Button size="sm" onClick={() => retrySearch(index)}>Search</Button>}
+                                                            {track.status === 'retrying' && <Button size="sm" disabled><LuLoader className="animate-spin" /></Button>}
+                                                            {track.status === 'success' && <div className="text-green-500"><CheckIcon /></div>}
+                                                            {track.status === 'failed' && <Button size="sm" variant="destructive" onClick={() => retrySearch(index)}><LuX /></Button>}
+                                                        </div>
+                                                        {track.suggestions.length > 0 && (
+                                                            <div className="pl-1">
+                                                                <p className="text-xs text-zinc-500 mb-1">Suggestions:</p>
+                                                                <ul className="space-y-1">
+                                                                    {track.suggestions.map((s, i) => (
+                                                                        <li key={i} className="flex items-center justify-between text-sm">
+                                                                            <span className="truncate">
+                                                                                {(s.title || "Unknown Title")} — {(s.artists || []).map(a => a.name).join(", ")}
+                                                                            </span>
+                                                                            <Button size="sm" variant="secondary" onClick={() => addSuggestion(s.videoId, index)}>Add</Button>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                    {ignoredDuplicates.count > 0 && (
+                                        <>
+                                            <p className="mb-2 font-medium">{ignoredDuplicates.count} duplicate tracks were ignored:</p>
+                                            <div className="max-h-[150px] overflow-y-auto">
+                                                <ul className="list-disc list-inside text-xs text-zinc-500">
+                                                    {ignoredDuplicates.items.map((item, i) => <li key={i}>{item}</li>)}
+                                                </ul>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogAction onClick={() => { setMissedTracksDialog(false); setStarPrompt(true); }}>
+                                Continue
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
-
-            {/* Connection Error */}
-            <AlertDialog open={connectionError} onOpenChange={setConnectionError}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Connection Error</AlertDialogTitle>
-                        <AlertDialogDescription>{errorMessage}</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogAction onClick={() => setConnectionError(false)}>Try Again</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-
-            {/* Clone Error */}
-            <AlertDialog open={cloneError} onOpenChange={setCloneError}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Clone Error</AlertDialogTitle>
-                        <AlertDialogDescription>{cloneErrorMessage}</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogAction onClick={() => setCloneError(false)}>Try Again</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-
-            {/* Missed tracks */}
-            <AlertDialog open={missedTracksDialog} onOpenChange={setMissedTracksDialog}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        {(() => {
-                            const missingCount = missedTracks?.count ?? 0;
-                            const dupCount = missedTracks?.duplicates?.count ?? 0;
-                            const title =
-                                missingCount > 0 && dupCount > 0
-                                    ? "Some songs couldn't be found & duplicates were ignored"
-                                    : missingCount > 0
-                                    ? "Some songs couldn't be found"
-                                    : "Duplicates were ignored";
-                            return <AlertDialogTitle>{title}</AlertDialogTitle>;
-                        })()}
-                        <AlertDialogDescription>
-                            <div className="mt-2">
-                                {/* Missing */}
-                                {missedTracks.count > 0 && (
-                                    <>
-                                        <p className="mb-2">
-                                            {missedTracks.count} songs couldn't be found on YouTube Music:
-                                        </p>
-                                        <div className="max-h-[200px] overflow-y-auto">
-                                            <ul className="list-disc list-inside">
-                                                {missedTracks.tracks.map((track, index) => (
-                                                    <li key={index} className="text-sm">
-                                                        {track}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* Duplicates */}
-                                {!!missedTracks.duplicates?.count && (
-                                    <div className={`mt-4 ${missedTracks.count ? "border-t pt-4" : ""}`}>
-                                        <p className="mb-2">
-                                            {missedTracks.duplicates.count} duplicates ignored:
-                                        </p>
-                                        <div className="max-h-[200px] overflow-y-auto">
-                                            <ul className="list-disc list-inside">
-                                                {missedTracks.duplicates.lines.map((line, i) => (
-                                                    <li key={i} className="text-sm">
-                                                        {line}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                        <div className="mt-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() =>
-                                                    navigator.clipboard.writeText(
-                                                        missedTracks.duplicates!.lines.join("\n")
-                                                    )
-                                                }
-                                            >
-                                                Copy duplicate list
-                                            </Button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogAction onClick={() => setMissedTracksDialog(false)}>Close</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </>
     );
 }

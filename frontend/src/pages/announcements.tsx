@@ -89,19 +89,6 @@ export default function Announcements() {
                                                 <div className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-line leading-relaxed">
                                                     {announcement.content}
                                                 </div>
-                                                {announcement.id === "7" && (
-                                                    <div className="mt-3">
-                                                        <a href="https://github.com/niscz/SpotiTransFair"
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-neutral-800 dark:bg-white text-white dark:text-black text-sm rounded-lg hover:bg-neutral-700 dark:hover:bg-gray-100 transition-colors"
-                                                        >
-                                                            <span>📚</span>
-                                                            View Self-Hosting
-                                                            Guide
-                                                        </a>
-                                                    </div>
-                                                )}
                                             </div>
                                         </div>
                                     </section>

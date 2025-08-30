@@ -2,91 +2,72 @@
 
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: GNU GPLv3](https://img.shields.io/badge/License-GNU_GPLv3-yellow.svg?style=for-the-badge)](https://www.gnu.org/licenses/)
+[![GitHub stars](https://img.shields.io/github/stars/niscz/SpotiTransFair?style=for-the-badge&logo=github&label=Star%20on%20GitHub)](https://github.com/niscz/SpotiTransFair)
 
 Transfer your Spotify playlists to YouTube Music with a secure, high-performance, and self-hostable application.
 
-![SpotiTransFair Screenshot](./githubcontent/screenshot.png)
+![SpotiTransFair Screenshot 1](./githubcontent/screenshot.png)
+_The homepage of the application._
 
-![SpotiTransFair Screenshot](./githubcontent/screenshot_2.png)
+![SpotiTransFair Screenshot 2](./githubcontent/screenshot_2.png)
+_The main interface for creating a playlist._
 
 ## 🚀 Key Features
 
--   **Seamless Playlist Transfer**: Convert any public Spotify playlist to a new YouTube Music playlist.
--   **Fast & Efficient**: Parallelized track searches drastically cut transfer time. Tracks are added to YouTube Music in batches (default 100) for resiliency.
--   **Private & Secure by Design**: 
-    -   Playlists default to PRIVATE (you can choose UNLISTED or PUBLIC).
-    -   Your YouTube Music auth headers are processed in-memory per request and never written to disk.
--   **Region-Aware Market Selection**: UI preselects the market (e.g., US, DE, GB) based on your region (best-effort) — you can override it at any time.
--   **Detailed Reporting**: Get a “missed tracks” dialog if some songs weren’t found.
--   **Health Check & UX niceties**:
-    -   One-click Connect button tests backend availability.
-    -   Clear, user-friendly error dialogs with actionable hints.
--   **Dockerized for Easy Deployment**: One command to bring up Frontend + Backend with Nginx reverse proxy.
--   **Modern Tech Stack**: React + TypeScript frontend; Python backend served with Gunicorn + Uvicorn (ASGI).
+- **Seamless Playlist Transfer**: Convert any public Spotify playlist to a new **or existing** YouTube Music playlist.
+- **Fast & Efficient**: Parallelized track searches with a **configurable threadpool** and **global rate limiter** to stay within API limits.
+- **Private & Secure by Design**:
+  - Playlists can be **PRIVATE** (default), **UNLISTED**, or **PUBLIC**.
+  - Your YouTube Music auth headers are processed **in-memory** per request and never persisted to disk.
+- **Region-Aware Market Selection**: The UI proposes a market based on your **browser language** (no IP calls). You can override at any time.
+- **Detailed Reporting**: Missed tracks and duplicates report. Retry dialog with **filter (Songs/Videos/Uploads)** and **Top-5 suggestions** to add directly.
+- **Dockerized for Easy Deployment**: One command to bring up the entire stack (Frontend + Backend, Nginx reverse proxy).
+- **Modern & Robust Tech Stack**: React & TypeScript served by Nginx (non-root), Python & Flask with Gunicorn + Uvicorn workers, resilient batching and retries.
 
 ## 🌱 Project Evolution: From Concept to Production-Ready
 
-This project is a heavily refactored, secured, and dockerized version of the original concept from the [SpotTransfer](https://github.com/Pushan2005/SpotTransfer) repository by **[Pushan2005](https://github.com/Pushan2005)**.
+This project is a heavily refactored, secured, and dockerized version of the original concept from the [SpotTransfer](https://github.com/Pushan2005/SpotTransfer) repository by **[Pushan Saha](https://github.com/Pushan2005)**.
 
 The goal was to take this great idea and re-engineer it into a robust, scalable, and secure application that follows modern DevOps and software engineering best practices.
 
 ### Key Improvements Made
 
 -   **🚀 Performance Overhaul**:
-    -   **Asynchronous/Concurrent processing** for YouTube Music searches.
-    -   **Batched adds**: to playlists (default 100 per request) for better stability and fewer transient API failures.
+    -   **Asynchronous Architecture**: Replaced the original synchronous Flask development server with a production-grade Gunicorn setup using modern `Uvicorn` ASGI workers.
+    -   **Parallel Track Searching**: Implemented `concurrent.futures` to search for all playlist tracks simultaneously.
+    -   **Resilient Batching**: Tracks are added to YouTube Music in resilient, split-and-retry batches to handle API errors gracefully.
 
 -   **🛡️ Security Hardening**:
-    -   **Eliminated shared file-based auth** → no cross-user leakage.
-    -   **Per-request, in-memory handling of headers**; sensitive data never persisted.
-    -   **Non-Root**: Containers run as non-root users.
-
--   **🧭 API Ergonomics & UX**:
-    -   **Market selector** in UI (default based on region).
-    -   **Privacy selector** in UI (default PRIVATE).
-    -   /api health endpoint + “Connect” button in UI.  
-    -   Clear, consistent success and error dialogs; improved empty/timeout states.
-
--   **🔧 Code Quality & Stability**:
-    -   **Complete Refactor** for clarity, stricter typing, and graceful fallbacks..
-    -   **Bug Squashing Marathon**: Solved numerous infrastructure bugs.
-    -   **Frontend Consistency**: Small tidy-ups across UI copy, validation, and dialogs.
+    -   **Solved Critical Race Condition**: Eliminated bugs where simultaneous requests could leak data by removing shared file-based authentication.
+    -   **Secure In-Memory Handling**: User authentication headers are handled securely for each request temporarily in RAM-FS and is deleted after use.
+    -   **Non-Root Containers**: Backend container runs as a non-root `appuser` for improved security. Frontend uses the official Nginx container (root in container) 
+    -   **Robust Error Handling**: Secure error handling prevents leaking internal server details to the client.
 
 -   **🐳 Full Dockerization & DevOps**:
-    -   **One-Command Setup**: The entire application, consisting of a React frontend and a Python backend, is containerized and managed with Docker Compose for an incredibly simple setup.
-    -   **Multi-Stage Dockerfiles**: Implemented multi-stage builds for both frontend and backend, resulting in minimal, optimized, and more secure production images.
-    -   **Nginx Reverse Proxy**: Deployed a production-standard Nginx reverse proxy within the frontend container. This correctly serves the React application and securely routes API traffic to the backend, solving all cross-origin (CORS) and network-related issues.
-    -   **Gunicorn/Uvicorn**: Production Gunicorn config with Uvicorn workers.
-
+    -   **One-Command Setup**: The entire application is containerized and managed with Docker Compose.
+    -   **Multi-Stage Dockerfiles**: Produces minimal, optimized, and more secure production images.
+    -   **Nginx Reverse Proxy**: A production-standard Nginx reverse proxy serves the frontend and securely routes API traffic to the backend.
+    -   **Health Checks & Restart Policies**: Services include health checks and `restart: unless-stopped` policies for high availability.
 
 ## 🤔 Why a Header-Based Approach? A Note on APIs
 
 A common question is, "Why not use the official YouTube API with a simple OAuth login?"
 
-The official way to interact with YouTube is through the **YouTube Data API v3**. While this API is excellent, its free tier is governed by a strict quota system.
+The official way to interact with YouTube is through the **YouTube Data API v3**. While excellent, its free tier is governed by a strict quota system.
 
 -   **Daily Quota**: 10,000 units per day.
--   **Cost of Operations**:
-    -   A single song search (`search.list`): **100 units**
-    -   Adding a single song to a playlist (`playlistItems.insert`): **50 units**
+-   **Cost of Operations**: A single song search costs **100 units**, and adding a song costs **50 units**.
 
-Let's do the math for a **single 50-song playlist**:
--   **Searching**: 50 songs * 100 units/search = 5,000 units
--   **Adding**: 50 songs * 50 units/add = 2,500 units
--   **Total**: **7,500 units**
-
-Transferring just one small playlist consumes 75% of the entire daily free quota. This makes it impossible to offer a reliable, free public service.
-
-This header-based approach, while less user-friendly upfront, allows **SpotiTransFair** to remain a completely free and unlimited service for everyone.
+A single 50-song playlist would consume **7,500 units** (75% of the daily free quota), making it impossible to offer a reliable, free public service. This header-based approach, while less user-friendly upfront, allows **SpotiTransFair** to remain completely free and unlimited.
 
 ## 🛠️ Getting Started (Installation)
 
-With Docker, getting SpotiTransFair running on your local machine is incredibly simple.
+With Docker, getting SpotiTransFair running is incredibly simple.
 
 ### Prerequisites
 
 -   [Git](https://git-scm.com/)
--   [Docker](https://www.docker.com/get-started) (Docker Compose included in Desktop; on Linux install Compose if needed)
+-   [Docker](https://www.docker.com/get-started) & [Docker Compose](https://docs.docker.com/compose/install/)
 
 ### 1. Clone the Repository
 
@@ -97,199 +78,127 @@ cd SpotiTransFair
 
 ### 2. Configure Environment Variables
 
-You need to provide your own Spotify API credentials.
-
-1.  **Create a `.env` file** by copying the example file:
+1.  **Create a `.env` file** from the example:
     ```bash
     cp .env.example .env
     ```
-
-2.  **Get Spotify Credentials**:
-    -   Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
-    -   Create a new App.
-    -   You will find your `Client ID` and `Client Secret` there.
-
-3.  **Edit the `.env` file** and add your credentials:
-    ```env
-    SPOTIPY_CLIENT_ID=YOUR_SPOTIFY_CLIENT_ID
-    SPOTIPY_CLIENT_SECRET=YOUR_SPOTIFY_CLIENT_SECRET
-    ```
+2.  **Get Spotify Credentials** from the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/) by creating a new App.
+3.  **Edit the `.env` file** and add your credentials. You can also customize other behaviors here.
 
 ### 3. Build and Run with Docker Compose
 
-This single command will build the production-ready frontend and backend images and start both services.
+This command builds the production-ready images and starts both services.
 
 ```bash
 docker-compose up --build
 ```
 
-The first time you run this, it will download the necessary base images and install all dependencies. Subsequent runs will be much faster.
-
 ### 4. Access the Application
 
 Once the containers are running, open your web browser and navigate to:
 
-**➡️ `http://localhost:5173`**
+-   **➡️ `http://localhost:5173`**
+
+-   Backend API: proxied under /api
 
 ## 📖 How to Use the App
 
-1.  **Sign in to YouTube Music** in your browser [Youtube Music](https://music.youtube.com).
-2.  **Get Auth Headers** (the UI has a step-by-step guide):
-    -   Open DevTools → Network → filter /browse (POST, 200).
-    -   Copy the **Request Headers** and paste them into the app.
+1.  **Sign in** to [YouTube Music](https://music.youtube.com/) in your browser.
+2.  **Get Auth Headers** (the UI has a step-by-step guide): Open DevTools → Network tab, filter for `/browse`, find a valid POST request, and copy the **Request Headers**.
+3.  **Validate Headers**: button in the UI – quick sanity check.
 3.  **Provide Spotify Playlist**: Paste the public URL of the Spotify playlist you want to transfer.
-4.  **Pick options**:
-    -   **Market**: defaults to a best-effort region guess; override if needed (e.g., US, DE, GB).
-    -   **Privacy**: **PRIVATE** (default), **UNLISTED**, or **PUBLIC**.
-5.  **Connect & Clone**: Click "Connect" to ensure the backend is running, then click "Clone Playlist" to start the transfer.
-6.  **Done!**: The playlist will be created in your YouTube Music account. If we can’t find some songs, you’ll get a **missed tracks** list.
+4.  **Choose Options**:
+    -   **Market**: Affects Spotify search results (defaults to a best-effort guess of your region).
+    -   **Privacy**: Sets the visibility of the new YouTube Music playlist (**PRIVATE** by default).
+    -   **Update existing** (optional): paste a YouTube Music playlist URL/ID to append only missing tracks.
+5.  **Connect & Clone**: Click "Connect" to check the backend status, then "Clone Playlist" to start.
+6.  **Done!**: A dialog will show the results, including any tracks that couldn't be found.
+7.  **Retry**: For missed tracks, use the dialog to adjust query, change filter (Songs/Videos/Uploads), see Top-5 suggestions, and add directly to the created/selected playlist.
 
-## ⚙️ Configuration & Behavior
+## ⚙️ API for Self-Hosters
 
--   **Batches**: Tracks are added in chunks of **100** (configurable in code) to reduce failures and speed up large transfers.
--   **Market**: Affects search results (e.g., region-specific availability).
--   **Privacy**: Controls the resulting YouTube Music playlist visibility.
--   **Security**:
-    -   Headers are never logged or persisted.
-    -   Containers run as non-root (appuser) in production stages.
--   **Health Check**:
-    -   GET /api/ returns a simple JSON if the backend is up.
-    -   The UI’s Connect button calls this endpoint.
-
-## 🧪 API (for self-hosters / integrators)
-
--   **Health**: GET /api/
-    -   Response: { "status": "ok" }
-
--   **Create Playlist**: POST /api/create
-    -   Body:
-        ```json
-        {
+-   `GET /api/`: Health check. Returns `{"message": "Server Online"}`.
+-   `POST /api/validate-headers`: Body: `{ "auth_headers": "<raw string|dict>" }` → `{ "valid": true|false, "message": "..." }`
+-   `GET /api/spotify/preview?playlist_link=...&market=US` → `{ "name": "...", "track_count": 123 }`
+-   `POST /api/create`: The main endpoint for creating playlists.
+    Body:
+    ```json
+    {
         "playlist_link": "https://open.spotify.com/playlist/...",
-        "auth_headers": "accept: */*\n... (full raw request headers) ...",
+        "auth_headers": "<raw string of headers>",
         "market": "US",
         "privacy_status": "PRIVATE"
-        }
-        ```
-    -   Response (example):
-        ```json
-        {
-        "playlist_id": "PLxxxxxxxxxxxx",
-        "name": "My Migrated Playlist",
-        "missed_tracks": { "count": 2, "tracks": ["Artist – Title", "…"] }
-        }
-        ```
+    }
+    ```
+    → `{ "message": "...", "missed_tracks": { ... }, "playlist_id": "...", "playlist_url": "..." }`
+-   `POST /api/ytm/search`
+    Body:
+    ```json
+    {
+        "query": "Artist - Title", 
+        "auth_headers": "...", 
+        "filter": "songs|videos|uploads", 
+        "top_k": 5 
+    }
+    ```
+    → `{ "results": [ { "videoId":"...", "title":"...", "artists":[...] }, ... ] }`
+-   `POST /api/ytm/add`
+    Body:
+    ```json
+    { 
+        "playlist_id": "PL...", 
+        "video_id": "abc123", 
+        "auth_headers": "..." 
+    }
+    ```
+    → `{ "ok": true }`
+-   `GET /api/stats`
+    → `{ "playlists": n, "songs": m }`
 
-    ***cURL example***
+## 🔧 Environment Variables
+
+| Variable                 | Default                 | Description                                  |
+| ------------------------ | ----------------------- | -------------------------------------------- |
+| `DEFAULT_SPOTIFY_MARKET` | `US`                    | Fallback search market for Spotify           |
+| `YTM_BATCH_SIZE`         | `60`                    | Items per add-batch to YTM                   |
+| `YTM_SLEEP_SECS`         | `0.3`                   | Sleep between batches/splits                 |
+| `YTM_POST_CREATE_SLEEP`  | `1.0`                   | Delay after playlist creation before inserts |
+| `YTM_SEARCH_WORKERS`     | `8`                     | Threadpool size for parallel search          |
+| `YTM_QPS`                | `5`                     | Global token-bucket QPS per process          |
+| `STATS_FILE`             | `/data/stats.json`      | Persisted counters                           |
+| `WEB_CONCURRENCY`        | `3`                     | Gunicorn workers (backend)                   |
+| `FRONTEND_URL`           | `http://localhost:5173` | CORS origin (dev only)                       |
+
+| Hinweis: Rate Limiting ist pro Prozess. Bei mehreren Gunicorn-Workern wirkt das jeweils per Worker (ausreichend für Self-Hosting).
+
+## 🧠 Known Limitations
+
+-   **Auth headers** können ablaufen: wenn die Suche 0 Treffer liefert, prüfe zuerst die Header.
+-   **Regional availability**: Manche Titel sind in YTM/Spotify nicht verfügbar oder nur unter anderem Artist/Release.
+-   **Private Spotify playlists**: Mit Client-Credentials nicht lesbar. (Public required.)
+-   **Best Effort Rate Limit**: Globaler Token-Bucket pro Prozess; harte API-Limits der Plattformen sind nicht öffentlich dokumentiert.
+
+## 🐳 Dev Setup (ohne Docker)
+
+Optional:
+
+1.  Backend:
     ```bash
-    curl -X POST http://localhost:5173/api/create \
-        -H "Content-Type: application/json" \
-        -d '{
-            "playlist_link": "https://open.spotify.com/playlist/...",
-            "auth_headers": "accept: */*\n...paste raw request headers here...",
-            "market": "US",
-            "privacy_status": "PRIVATE"
-        }'
+    cd backend
+    python -m venv .venv && source .venv/bin/activate
+    pip install -r requirements.txt
+    export WEB_CONCURRENCY=1
+    gunicorn --config config/gunicorn.conf.py main:app
     ```
 
-## 📂 Project Structure
+2.  Frontend:
+    ```bash
+    cd frontend
+    pnpm install
+    pnpm dev
+    ```
 
-```
-SpotiTransFair/
-├── backend
-│   ├── Dockerfile
-│   ├── config
-│   │   └── gunicorn.conf.py
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── spotify.py
-│   └── ytm.py
-│
-├── frontend
-│   ├── Dockerfile
-│   ├── components.json
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── nginx.conf
-│   ├── package.json
-│   ├── pnpm-lock.yaml
-│   ├── postcss.config.js
-│   ├── public
-│   │   └── favicon.png
-│   ├── src
-│   │   ├── assets
-│   │   │   ├── headers.png
-│   │   │   └── react.svg
-│   │   ├── components
-│   │   │   ├── create-playlist
-│   │   │   │   ├── get-headers.tsx
-│   │   │   │   └── input-fields.tsx
-│   │   │   ├── landing
-│   │   │   │   ├── footer.tsx
-│   │   │   │   ├── hero.tsx
-│   │   │   │   └── how-to-use.tsx
-│   │   │   ├── theme-provider.tsx
-│   │   │   └── ui
-│   │   │       ├── alert-dialog.tsx
-│   │   │       ├── button.tsx
-│   │   │       ├── card.tsx
-│   │   │       ├── check.tsx
-│   │   │       ├── input.tsx
-│   │   │       └── textarea.tsx
-│   │   ├── context
-│   │   │   └── playlist-context.tsx
-│   │   ├── index.css
-│   │   ├── lib
-│   │   │   └── utils.ts
-│   │   ├── main.tsx
-│   │   ├── nav-bar.tsx
-│   │   ├── pages
-│   │   │   ├── App.tsx
-│   │   │   ├── announcements.tsx
-│   │   │   └── create-playlist.tsx
-│   │   └── vite-env.d.ts
-│   ├── tailwind.config.js
-│   ├── tsconfig.app.json
-│   ├── tsconfig.json
-│   ├── tsconfig.node.json
-│   ├── vercel.json
-│   └── vite.config.ts
-├── .env.example
-├── docker-compose.yml
-└── README.MD
-```
-
-## 💻 Technology Stack
-
--   **Backend**: Python, Flask (app), Gunicorn + Uvicorn (ASGI workers)
--   **Frontend**: React, TypeScript, Vite, TailwindCSS
--   **APIs**: Spotify Web API, `ytmusicapi` (unofficial YouTube Music API)
--   **Deployment**: Docker, Docker Compose, Nginx reverse proxy
-
-## 🧩 Known Limitations
-
--   Source playlists must be public on Spotify.
--   YouTube Music availability varies by market/region; choosing the right market can improve match rates.
--   Some tracks won’t have exact matches on YouTube Music (covers, regional variants, unavailable releases).
-
-## 🆘 Troubleshooting
-
--   **“Connection Error” / 502 from** /api/
-    Usually the backend failed to boot. If you’re running outside Docker, ensure:
-    -   **Python 3.10+** (the code uses modern type hints like str | None).
-        If you must use Python 3.9, replace unions with typing.Optional[...], or run via Docker which ships a compatible runtime.
--   **Timeouts on very large playlists**
-    Try again; batching is enabled, but YouTube Music can rate-limit aggressively. Self-hosting generally improves reliability.
-
-## 🔐 Security Notes
-
--   Auth headers are handled in-memory only and never persisted.
--   Containers run as non-root (appuser) in production stages (frontend & backend).
--   Nginx terminates requests and proxies /api/* internally to the backend to avoid CORS complexity.
-
-## 📣 Announcements
-
-Check the Announcements page in the app for the latest updates.
+Vite proxyt `/api` zum Backend via Nginx in Docker oder lokalem Backend (passe ggf. `vite.config.ts` an).
 
 ## 📄 License
 
@@ -297,4 +206,4 @@ This project is licensed under the **GNU General Public License v3.0**. As a der
 
 ## 🙏 Acknowledgments
 
--   Thanks to **[Pushan2005](https://github.com/Pushan2005)** for the original idea and repo [SpotTransfer project](https://github.com/Pushan2005/SpotTransfer).
+-   A big thank you to **[Pushan Saha](https://github.com/Pushan2005)** for creating the [original SpotTransfer project](https://github.com/Pushan2005/SpotTransfer) that inspired this enhanced version.

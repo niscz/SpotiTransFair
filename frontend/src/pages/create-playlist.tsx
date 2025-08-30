@@ -2,6 +2,7 @@
 import { Footer } from "@/components/landing/footer";
 import GetHeaders from "@/components/create-playlist/get-headers";
 import InputFields from "@/components/create-playlist/input-fields";
+import InlineLiveStats from "@/components/landing/inline-live-stats";
 
 export default function CreatePlaylist() {
     return (
@@ -9,7 +10,7 @@ export default function CreatePlaylist() {
             {/* Mobile View */}
             <main className="lg:hidden flex w-screen h-screen flex-col items-center justify-center p-4">
                 <h2 className="text-2xl font-bold text-center text-neutral-800 dark:text-white">
-                    You need a laptop to use the tool
+                    You need a laptop to use the tool. We recommend to use Chrome/Firefox (DevTools).
                     <p className="m-4 text-sm text-neutral-500 dark:text-neutral-400 font-normal">
                         {"(Enter full screen mode if you're on a laptop/PC)"}
                     </p>
@@ -25,6 +26,9 @@ export default function CreatePlaylist() {
                     Create Playlist
                 </h2>
                 <InputFields />
+                <div className="my-10">
+                    <InlineLiveStats />
+                </div>
                 <Footer />
             </main>
         </>

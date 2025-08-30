@@ -8,23 +8,37 @@ services:
       - .env
     environment:
       - FRONTEND_URL=http://localhost:5173
+      - STATS_FILE=/data/stats.json
+      - WEB_CONCURRENCY=3
+      - GEOIP_DB=/geoip/GeoLite2-Country.mmdb
+      - TMPDIR=/ram
+    volumes:
+      - ./data:/data
+      - ./geoip/GeoLite2-Country.mmdb:/geoip/GeoLite2-Country.mmdb:ro
+      - type: tmpfs
+        target: /ram
+        tmpfs:
+          size: 64m
+          mode: 1777
     healthcheck:
       test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request,sys;sys.exit(0) if urllib.request.urlopen('http://localhost:8001/').status==200 else sys.exit(1)\nPY"]
       interval: 10s
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    shm_size: "256m"
 
   frontend:
     build: ./frontend
     container_name: spotitransfair-frontend
     ports:
-      - "5173:80"
+      - "5173:8080"
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"] 
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"] 
       interval: 10s
       timeout: 3s
       retries: 5
     restart: unless-stopped
+  
