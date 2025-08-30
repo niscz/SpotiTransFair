@@ -2,7 +2,7 @@
 import { Footer } from "@/components/landing/footer";
 import GetHeaders from "@/components/create-playlist/get-headers";
 import InputFields from "@/components/create-playlist/input-fields";
-import InlineLiveStats from "@/components/landing/inline-live-stats";
+import LiveStats from "@/components/landing/live-stats";
 
 export default function CreatePlaylist() {
     return (
@@ -27,7 +27,7 @@ export default function CreatePlaylist() {
                 </h2>
                 <InputFields />
                 <div className="my-10">
-                    <InlineLiveStats />
+                    <LiveStats variant="create" />
                 </div>
                 <Footer />
             </main>
