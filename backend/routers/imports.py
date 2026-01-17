@@ -26,8 +26,12 @@ def import_detail(id: int, request: Request, session: Session = Depends(get_sess
     total = len(job.items)
     matched = len([i for i in job.items if i.status == ItemStatus.MATCHED])
     uncertain = len([i for i in job.items if i.status == ItemStatus.UNCERTAIN])
-    failed = len([i for i in job.items if i.status == ItemStatus.NOT_FOUND])
-    skipped = len([i for i in job.items if i.status == ItemStatus.SKIPPED])
+
+    failed_items = [i for i in job.items if i.status == ItemStatus.NOT_FOUND]
+    skipped_items = [i for i in job.items if i.status == ItemStatus.SKIPPED]
+
+    failed = len(failed_items)
+    skipped = len(skipped_items)
 
     status_series = [matched, uncertain, failed, skipped]
     status_labels = ["Matched", "Uncertain", "Not found", "Skipped"]
@@ -76,12 +80,14 @@ def import_detail(id: int, request: Request, session: Session = Depends(get_sess
             "failed": failed,
             "skipped": skipped,
         },
-        "status_series": json.dumps(status_series),
-        "status_labels": json.dumps(status_labels),
-        "top_artist_labels": json.dumps(top_artist_labels),
-        "top_artist_values": json.dumps(top_artist_values),
-        "score_labels": json.dumps(list(score_bins.keys())),
-        "score_values": json.dumps(list(score_bins.values())),
+        "status_series": status_series,
+        "status_labels": status_labels,
+        "top_artist_labels": top_artist_labels,
+        "top_artist_values": top_artist_values,
+        "score_labels": list(score_bins.keys()),
+        "score_values": list(score_bins.values()),
+        "failed_items": failed_items,
+        "skipped_items": skipped_items,
     })
 
 @router.get("/imports/{id}/review")

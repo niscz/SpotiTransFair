@@ -108,6 +108,21 @@
             updateButtons();
         });
       }
+
+      const form = document.getElementById('importForm');
+      form.addEventListener('submit', function(e) {
+          const clickedBtn = e.submitter;
+          if (clickedBtn) {
+              const input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = clickedBtn.name;
+              input.value = clickedBtn.value;
+              form.appendChild(input);
+
+              clickedBtn.disabled = true;
+              clickedBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+          }
+      });
   });
 </script>
 {% endblock %}

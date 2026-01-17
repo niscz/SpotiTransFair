@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 import base64
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Callable
 
 import requests
 from dotenv import load_dotenv
@@ -38,11 +38,13 @@ class SpotifyClient:
     API_BASE_URL = "https://api.spotify.com/v1"
     AUTH_URL = "https://accounts.spotify.com/api/token"
 
-    def __init__(self, access_token: Optional[str] = None, refresh_token: Optional[str] = None) -> None:
+    def __init__(self, access_token: Optional[str] = None, refresh_token: Optional[str] = None,
+                 on_token_refresh: Optional[Callable[[Dict], None]] = None) -> None:
         self.client_id = os.getenv("SPOTIPY_CLIENT_ID")
         self.client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
         self.access_token = access_token
         self.refresh_token = refresh_token
+        self.on_token_refresh = on_token_refresh
         self._http = _session()
 
         if not self.access_token and self.client_id and self.client_secret:
@@ -88,6 +90,10 @@ class SpotifyClient:
             # Update refresh token if provided
             if "refresh_token" in token_info:
                 self.refresh_token = token_info["refresh_token"]
+
+            if self.on_token_refresh:
+                self.on_token_refresh(token_info)
+
         except requests.exceptions.RequestException as e:
             raise SpotifyError(f"Failed to refresh token: {e}") from e
 

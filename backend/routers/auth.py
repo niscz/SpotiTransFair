@@ -49,21 +49,30 @@ def login(provider: Provider):
 def callback(provider: Provider, code: str, state: str, request: Request, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.username == "admin")).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return RedirectResponse("/connect?error=User+not+found", status_code=303)
 
-    # Verify state
-    cookie_state = request.cookies.get("oauth_state")
-    if not cookie_state:
-        raise HTTPException(status_code=400, detail="State cookie missing")
-
-    try:
-        original_state = serializer.loads(cookie_state)
-        if not secrets.compare_digest(original_state, state):
-            raise HTTPException(status_code=400, detail="State mismatch")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid state")
+    # Helper to get status
+    conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
+    conn_map = {c.provider: True for c in conns}
+    status = {
+        "spotify_connected": conn_map.get(Provider.SPOTIFY, False),
+        "tidal_connected": conn_map.get(Provider.TIDAL, False),
+        "ytm_connected": conn_map.get(Provider.YTM, False)
+    }
 
     try:
+        # Verify state
+        cookie_state = request.cookies.get("oauth_state")
+        if not cookie_state:
+            raise Exception("State cookie missing. Please try again.")
+
+        try:
+            original_state = serializer.loads(cookie_state)
+            if not secrets.compare_digest(original_state, state):
+                raise Exception("State mismatch. Possible CSRF attack.")
+        except Exception:
+            raise Exception("Invalid state cookie.")
+
         tokens = {}
         if provider == Provider.SPOTIFY:
             tokens = exchange_spotify_code(code)
@@ -83,9 +92,7 @@ def callback(provider: Provider, code: str, state: str, request: Request, sessio
         return templates.TemplateResponse("connect.html", {
             "request": request,
             "error": str(e),
-            "spotify_connected": False, # Simplified
-            "tidal_connected": False,
-            "ytm_connected": False
+            **status
         })
 
 @router.post("/auth/ytm")

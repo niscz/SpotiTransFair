@@ -115,7 +115,13 @@ def process_import_job(job_id: int):
             token = spotify_conn.credentials.get("access_token") if spotify_conn else None
             refresh = spotify_conn.credentials.get("refresh_token") if spotify_conn else None
 
-            sp_client = SpotifyClient(access_token=token, refresh_token=refresh)
+            def on_token_refresh(new_token_info):
+                if spotify_conn:
+                    spotify_conn.credentials = new_token_info
+                    session.add(spotify_conn)
+                    session.commit()
+
+            sp_client = SpotifyClient(access_token=token, refresh_token=refresh, on_token_refresh=on_token_refresh)
 
             tracks = sp_client.get_playlist_tracks(job.source_playlist_id)
             logger.info(f"Fetched {len(tracks)} tracks from Spotify")

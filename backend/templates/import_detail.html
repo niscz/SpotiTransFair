@@ -103,13 +103,13 @@
     </div>
 
     <!-- Actions -->
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 mb-3">
        {% if job.status == 'waiting_review' %}
-          <a href="/imports/{{ job.id }}/review" class="btn btn-warning">
+          <a href="/imports/{{ job.id }}/review" class="btn btn-warning btn-action">
              Review Matches ({{ stats.uncertain }})
           </a>
-          <form action="/imports/{{ job.id }}/finalize" method="POST">
-             <button type="submit" class="btn btn-success" onclick="return confirm('Finalize import? Uncertain matches will be skipped.')">
+          <form action="/imports/{{ job.id }}/finalize" method="POST" class="d-inline-block">
+             <button type="submit" class="btn btn-success btn-action" onclick="if(!confirm('Finalize import? Uncertain matches will be skipped.')) return false;">
                 Finalize Import
              </button>
           </form>
@@ -117,12 +117,46 @@
 
        {% if job.target_playlist_id %}
           {% if job.target_provider == 'tidal' %}
-            <a href="https://listen.tidal.com/playlist/{{ job.target_playlist_id }}" target="_blank" class="btn btn-primary">Open in TIDAL</a>
+            <a href="https://listen.tidal.com/playlist/{{ job.target_playlist_id }}" target="_blank" class="btn btn-primary btn-action">Open in TIDAL</a>
           {% else %}
-             <a href="https://music.youtube.com/playlist?list={{ job.target_playlist_id }}" target="_blank" class="btn btn-primary">Open in YTM</a>
+             <a href="https://music.youtube.com/playlist?list={{ job.target_playlist_id }}" target="_blank" class="btn btn-primary btn-action">Open in YTM</a>
           {% endif %}
        {% endif %}
     </div>
+
+    {% if failed_items or skipped_items %}
+    <div class="card mb-3">
+       <div class="card-header">
+          <h3 class="card-title">Missed Tracks (Failed or Skipped)</h3>
+       </div>
+       <div class="table-responsive">
+          <table class="table card-table table-vcenter text-nowrap datatable">
+             <thead>
+               <tr>
+                 <th>Artist</th>
+                 <th>Title</th>
+                 <th>Status</th>
+               </tr>
+             </thead>
+             <tbody>
+               {% for item in failed_items + skipped_items %}
+               <tr>
+                  <td>{{ (item.original_track_data.artists|join(', ')) if item.original_track_data.artists is iterable and item.original_track_data.artists is not string else item.original_track_data.artists }}</td>
+                  <td>{{ item.original_track_data.name }}</td>
+                  <td>
+                     {% if item.status.value == 'not_found' %}
+                       <span class="badge bg-danger me-1"></span> Not Found
+                     {% else %}
+                       <span class="badge bg-secondary me-1"></span> Skipped
+                     {% endif %}
+                  </td>
+               </tr>
+               {% endfor %}
+             </tbody>
+          </table>
+       </div>
+    </div>
+    {% endif %}
 
     {% if job.error_message %}
     <div class="alert alert-danger mt-3">
@@ -138,19 +172,19 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     var statusOptions = {
-      series: {{ status_series|safe }},
+      series: {{ status_series|tojson }},
       chart: {
         type: 'donut',
         height: 260,
         fontFamily: 'inherit',
         animations: { enabled: true, easing: 'easeinout', speed: 600 }
       },
-      labels: {{ status_labels|safe }},
+      labels: {{ status_labels|tojson }},
       colors: [
-        tabler.getColor("success"),
-        tabler.getColor("warning"),
-        tabler.getColor("danger"),
-        tabler.getColor("secondary")
+        "#2fb344",
+        "#f76707",
+        "#d63939",
+        "#6e7582"
       ],
       legend: { position: 'bottom' }
     };
@@ -161,7 +195,7 @@
       var topArtistsOptions = {
         series: [{
           name: 'Tracks',
-          data: {{ top_artist_values|safe }}
+          data: {{ top_artist_values|tojson }}
         }],
         chart: {
           type: 'bar',
@@ -171,8 +205,8 @@
           animations: { enabled: true, easing: 'easeinout', speed: 700 }
         },
         dataLabels: { enabled: false },
-        xaxis: { categories: {{ top_artist_labels|safe }} },
-        colors: [tabler.getColor("primary")]
+        xaxis: { categories: {{ top_artist_labels|tojson }} },
+        colors: ["#206bc4"]
       };
       new ApexCharts(topArtistsElement, topArtistsOptions).render();
     }
@@ -180,7 +214,7 @@
     var scoreOptions = {
       series: [{
         name: 'Items',
-        data: {{ score_values|safe }}
+        data: {{ score_values|tojson }}
       }],
       chart: {
         type: 'area',
@@ -192,10 +226,20 @@
       dataLabels: { enabled: false },
       stroke: { curve: 'smooth', width: 2 },
       fill: { type: 'gradient', gradient: { shadeIntensity: 0.3, opacityFrom: 0.4, opacityTo: 0.05 } },
-      xaxis: { categories: {{ score_labels|safe }} },
-      colors: [tabler.getColor("azure")]
+      xaxis: { categories: {{ score_labels|tojson }} },
+      colors: ["#4299e1"]
     };
     new ApexCharts(document.querySelector("#chart-score-distribution"), scoreOptions).render();
+
+    // Loading state for buttons
+    const btns = document.querySelectorAll('.btn-action');
+    btns.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+           if (this.target === '_blank') return;
+           this.classList.add('disabled');
+           this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+        });
+    });
   });
 </script>
 {% endblock %}

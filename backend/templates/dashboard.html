@@ -199,15 +199,15 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
       var statusOptions = {
-          series: {{ chart_series|safe }},
+          series: {{ chart_series|tojson }},
           chart: {
               type: 'donut',
               height: 260,
               fontFamily: 'inherit',
               animations: { enabled: true, easing: 'easeinout', speed: 600 }
           },
-          labels: {{ chart_labels|safe }},
-          colors: [tabler.getColor("success"), tabler.getColor("danger"), tabler.getColor("warning"), tabler.getColor("primary"), tabler.getColor("secondary")],
+          labels: {{ chart_labels|tojson }},
+          colors: ["#2fb344", "#d63939", "#f76707", "#206bc4", "#6e7582"],
           legend: { position: 'bottom' }
       };
       new ApexCharts(document.querySelector("#chart-jobs"), statusOptions).render();
@@ -215,7 +215,7 @@
       var volumeOptions = {
           series: [{
               name: 'Imports',
-              data: {{ day_values|safe }}
+              data: {{ day_values|tojson }}
           }],
           chart: {
               type: 'area',
@@ -227,22 +227,22 @@
           dataLabels: { enabled: false },
           stroke: { curve: 'smooth', width: 2 },
           fill: { type: 'gradient', gradient: { shadeIntensity: 0.3, opacityFrom: 0.4, opacityTo: 0.05 } },
-          xaxis: { categories: {{ day_labels|safe }} },
-          colors: [tabler.getColor("primary")]
+          xaxis: { categories: {{ day_labels|tojson }} },
+          colors: ["#206bc4"]
       };
       new ApexCharts(document.querySelector("#chart-volume"), volumeOptions).render();
 
       var providerOptions = {
-          series: {{ provider_series|safe }},
+          series: {{ provider_series|tojson }},
           chart: { type: 'pie', height: 260, fontFamily: 'inherit', animations: { enabled: true, speed: 600 } },
-          labels: {{ provider_labels|safe }},
-          colors: [tabler.getColor("success"), tabler.getColor("indigo"), tabler.getColor("red")],
+          labels: {{ provider_labels|tojson }},
+          colors: ["#2fb344", "#4263eb", "#d63939"],
           legend: { position: 'bottom' }
       };
       new ApexCharts(document.querySelector("#chart-providers"), providerOptions).render();
 
       var itemOptions = {
-          series: [{ data: {{ item_series|safe }} }],
+          series: [{ data: {{ item_series|tojson }} }],
           chart: {
               type: 'bar',
               height: 260,
@@ -252,8 +252,8 @@
           },
           plotOptions: { bar: { horizontal: true, barHeight: '60%' } },
           dataLabels: { enabled: false },
-          xaxis: { categories: {{ item_labels|safe }} },
-          colors: [tabler.getColor("azure")]
+          xaxis: { categories: {{ item_labels|tojson }} },
+          colors: ["#4299e1"]
       };
       new ApexCharts(document.querySelector("#chart-items"), itemOptions).render();
 

@@ -29,7 +29,16 @@ def playlists_page(request: Request, session: Session = Depends(get_session)):
     error = None
 
     if conn:
-        client = SpotifyClient(access_token=conn.credentials.get("access_token"), refresh_token=conn.credentials.get("refresh_token"))
+        def on_token_refresh(new_token_info):
+            conn.credentials = new_token_info
+            session.add(conn)
+            session.commit()
+
+        client = SpotifyClient(
+            access_token=conn.credentials.get("access_token"),
+            refresh_token=conn.credentials.get("refresh_token"),
+            on_token_refresh=on_token_refresh
+        )
         try:
             data = client.get_user_playlists(limit=50)
             for item in data.get("items", []):
