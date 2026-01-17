@@ -59,8 +59,9 @@ def finalize_import_job(job_id: int):
                 temp_path = None
                 try:
                     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp:
-                        ytmusicapi.setup(filepath=temp.name, headers_raw=headers_raw)
                         temp_path = temp.name
+
+                    ytmusicapi.setup(filepath=temp_path, headers_raw=headers_raw)
                     ytmusic = ytmusicapi.YTMusic(temp_path)
 
                     name = job.source_playlist_name or "Imported Playlist"
@@ -117,6 +118,8 @@ def process_import_job(job_id: int):
 
             def on_token_refresh(new_token_info):
                 if spotify_conn:
+                    if "refresh_token" not in new_token_info and spotify_conn.credentials.get("refresh_token"):
+                        new_token_info["refresh_token"] = spotify_conn.credentials["refresh_token"]
                     spotify_conn.credentials = new_token_info
                     session.add(spotify_conn)
                     session.commit()
@@ -170,9 +173,9 @@ def process_import_job(job_id: int):
                 temp_path = None
                 try:
                     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp:
-                        ytmusicapi.setup(filepath=temp.name, headers_raw=headers_raw)
                         temp_path = temp.name
 
+                    ytmusicapi.setup(filepath=temp_path, headers_raw=headers_raw)
                     ytmusic = ytmusicapi.YTMusic(temp_path)
 
                     # aligned list of video ids (or None)

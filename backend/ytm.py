@@ -125,21 +125,24 @@ def _fmt_label(t: dict) -> str:
 def validate_headers(headers_raw: Union[str, Dict[str, str]]) -> Tuple[bool, str]:
     """Try a light call with the provided raw headers to verify validity."""
     tmpdir = "/dev/shm" if os.path.isdir("/dev/shm") else None
-    temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir)
+    temp_path = None
     try:
-        ytmusicapi.setup(filepath=temp_file.name, headers_raw=_headers_to_raw(headers_raw))
-        ytmusic = ytmusicapi.YTMusic(temp_file.name)
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir) as temp_file:
+            temp_path = temp_file.name
+
+        ytmusicapi.setup(filepath=temp_path, headers_raw=_headers_to_raw(headers_raw))
+        ytmusic = ytmusicapi.YTMusic(temp_path)
         _rate_limiter.acquire()
         _ = ytmusic.get_library_playlists(limit=1)
         return True, "Headers valid."
     except Exception as exc:  # pylint: disable=broad-exception-caught
         return False, f"Headers invalid or expired: {str(exc)}"
     finally:
-        temp_file.close()
-        try:
-            os.unlink(temp_file.name)
-        except OSError:
-            pass
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 def add_single_video_to_playlist(
@@ -147,20 +150,23 @@ def add_single_video_to_playlist(
 ) -> bool:
     """Add a single videoId to the target playlist (duplicates disabled)."""
     tmpdir = "/dev/shm" if os.path.isdir("/dev/shm") else None
-    temp = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir)
+    temp_path = None
     try:
-        ytmusicapi.setup(filepath=temp.name, headers_raw=_headers_to_raw(headers_raw))
-        ytm = ytmusicapi.YTMusic(temp.name)
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir) as temp_file:
+            temp_path = temp_file.name
+
+        ytmusicapi.setup(filepath=temp_path, headers_raw=_headers_to_raw(headers_raw))
+        ytm = ytmusicapi.YTMusic(temp_path)
         _rate_limiter.acquire()
         res = ytm.add_playlist_items(playlist_id, [video_id], duplicates=False)
         ok = not isinstance(res, dict) or res.get("status") in (None, "STATUS_SUCCEEDED")
         return bool(ok)
     finally:
-        temp.close()
-        try:
-            os.unlink(temp.name)
-        except OSError:
-            pass
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 def search_tracks(
@@ -168,10 +174,13 @@ def search_tracks(
 ) -> List[Dict[str, Any]]:
     """Lightweight YT Music search for UI suggestions; returns top_k raw results."""
     tmpdir = "/dev/shm" if os.path.isdir("/dev/shm") else None
-    temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir)
+    temp_path = None
     try:
-        ytmusicapi.setup(filepath=temp_file.name, headers_raw=_headers_to_raw(headers_raw))
-        ytm = ytmusicapi.YTMusic(temp_file.name)
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir) as temp_file:
+            temp_path = temp_file.name
+
+        ytmusicapi.setup(filepath=temp_path, headers_raw=_headers_to_raw(headers_raw))
+        ytm = ytmusicapi.YTMusic(temp_path)
         _rate_limiter.acquire()
         if filt == "uploads":
             results = ytm.search(query, scope="uploads") or []
@@ -183,11 +192,11 @@ def search_tracks(
             ) or []
         return results[:top_k]
     finally:
-        temp_file.close()
-        try:
-            os.unlink(temp_file.name)
-        except OSError:
-            pass
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 def _search_track_exactish(ytmusic: ytmusicapi.YTMusic, track: dict) -> Optional[str]:
@@ -331,10 +340,13 @@ def create_ytm_playlist(
 ) -> Tuple[Optional[str], Dict[str, Any]]:
     """Create or update a YT Music playlist from a Spotify link and return (playlist_id, missed)."""
     tmpdir = "/dev/shm" if os.path.isdir("/dev/shm") else None
-    temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir)
+    temp_path = None
     try:
-        ytmusicapi.setup(filepath=temp_file.name, headers_raw=_headers_to_raw(headers_raw))
-        ytmusic = ytmusicapi.YTMusic(temp_file.name)
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", dir=tmpdir) as temp_file:
+            temp_path = temp_file.name
+
+        ytmusicapi.setup(filepath=temp_path, headers_raw=_headers_to_raw(headers_raw))
+        ytmusic = ytmusicapi.YTMusic(temp_path)
 
         tracks = get_all_tracks(playlist_link, market)
         name = title_override or get_playlist_name(playlist_link)
@@ -403,8 +415,8 @@ def create_ytm_playlist(
         return pid, missed
 
     finally:
-        temp_file.close()
-        try:
-            os.unlink(temp_file.name)
-        except OSError:
-            pass
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass

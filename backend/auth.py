@@ -1,11 +1,14 @@
 import os
 import base64
 import requests
+import logging
 from urllib.parse import urlencode
 from typing import Dict, Any, Tuple
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
@@ -15,6 +18,17 @@ SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8001/
 TIDAL_CLIENT_ID = os.getenv("TIDAL_CLIENT_ID")
 TIDAL_CLIENT_SECRET = os.getenv("TIDAL_CLIENT_SECRET")
 TIDAL_REDIRECT_URI = os.getenv("TIDAL_REDIRECT_URI", "http://localhost:8001/callback/tidal")
+
+if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+    raise RuntimeError("Missing Spotify Credentials (SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET)")
+
+if not TIDAL_CLIENT_ID or not TIDAL_CLIENT_SECRET:
+    raise RuntimeError("Missing TIDAL Credentials (TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET)")
+
+if "localhost" in SPOTIFY_REDIRECT_URI:
+    logger.warning(f"Using default or localhost callback for Spotify: {SPOTIFY_REDIRECT_URI}")
+if "localhost" in TIDAL_REDIRECT_URI:
+    logger.warning(f"Using default or localhost callback for TIDAL: {TIDAL_REDIRECT_URI}")
 
 def get_spotify_auth_url(state: str) -> str:
     params = {

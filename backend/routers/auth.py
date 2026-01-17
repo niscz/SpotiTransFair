@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 from database import get_session
@@ -23,7 +23,7 @@ def connect_page(
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-):
+) -> Response:
     conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
     conn_map = {c.provider: True for c in conns}
 
@@ -35,7 +35,7 @@ def connect_page(
     })
 
 @router.get("/auth/{provider}/login")
-def login(provider: Provider):
+def login(provider: Provider) -> Response:
     state = secrets.token_urlsafe(16)
     url = "/"
     if provider == Provider.SPOTIFY:
@@ -57,7 +57,7 @@ def callback(
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-):
+) -> Response:
 
     # Helper to get status
     conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
@@ -109,7 +109,7 @@ def auth_ytm(
     headers: str = Form(...),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-):
+) -> Response:
 
     valid, msg = ytm.validate_headers(headers)
     if not valid:

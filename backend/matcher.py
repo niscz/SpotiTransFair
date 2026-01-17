@@ -3,7 +3,7 @@ from difflib import SequenceMatcher
 from typing import Dict, Any, List, Tuple, Optional
 from models import ItemStatus
 
-def normalize_string(s: str) -> str:
+def normalize_string(s: Optional[Any]) -> str:
     if not s:
         return ""
     s = str(s).lower()
@@ -25,13 +25,16 @@ def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
         return 1.0
 
     # 1. Title Match
-    src_title = normalize_string(source.get("name", ""))
-    tgt_title = normalize_string(target.get("title", ""))
+    src_title = normalize_string(source.get("name") or "")
+    tgt_title = normalize_string(target.get("title") or "")
     title_score = SequenceMatcher(None, src_title, tgt_title).ratio()
 
     # 2. Artist Match
-    src_artists = [normalize_string(a) for a in source.get("artists", [])]
-    tgt_artists = [normalize_string(a) for a in target.get("artists", [])]
+    src_artists_raw = source.get("artists") or []
+    tgt_artists_raw = target.get("artists") or []
+
+    src_artists = [normalize_string(a) for a in src_artists_raw]
+    tgt_artists = [normalize_string(a) for a in tgt_artists_raw]
 
     artist_score = 0.0
     if src_artists and tgt_artists:
@@ -43,9 +46,9 @@ def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
 
     # 3. Duration Match
     # Spotify duration is ms
-    src_dur = source.get("duration_ms", 0)
+    src_dur = int(source.get("duration_ms") or 0)
     # TIDAL usually returns seconds.
-    tgt_dur_raw = target.get("duration", 0)
+    tgt_dur_raw = int(target.get("duration") or 0)
     tgt_dur = tgt_dur_raw * 1000 # Assume seconds as per typical API
 
     duration_score = 1.0

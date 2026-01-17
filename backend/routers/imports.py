@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Request, Depends, HTTPException, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
-from sqlmodel import Session
+from sqlmodel import Session, select
 from database import get_session
-from models import User, ImportJob, ImportItem, ItemStatus, JobStatus
+from models import User, ImportJob, ImportItem, ItemStatus, JobStatus, Connection, Provider
 from worker import finalize_import_job
 from rq import Queue
 import redis
 import os
 import json
 from tenant import get_current_user
+import ytm
+from tidal import TidalClient
+from ytm import _headers_to_raw
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -24,7 +27,7 @@ def import_detail(
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-):
+) -> Response:
     job = session.get(ImportJob, id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
@@ -102,11 +105,11 @@ def review_page(
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-):
+) -> Response:
     job = session.get(ImportJob, id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
-    items = [i for i in job.items if i.status == ItemStatus.UNCERTAIN]
+    items = [i for i in job.items if i.status in (ItemStatus.UNCERTAIN, ItemStatus.NOT_FOUND)]
 
     return templates.TemplateResponse("review.html", {
         "request": request,
@@ -114,17 +117,63 @@ def review_page(
         "items": items
     })
 
+@router.post("/imports/{id}/search_track")
+def search_track(
+    id: int,
+    query: str = Form(...),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+) -> Response:
+    job = session.get(ImportJob, id)
+    if not job or job.user_id != user.id:
+        raise HTTPException(status_code=404)
+
+    results = []
+
+    if job.target_provider == Provider.TIDAL:
+        conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.TIDAL)).first()
+        if not conn:
+             raise HTTPException(status_code=400, detail="Not connected to TIDAL")
+        client = TidalClient(access_token=conn.credentials.get("access_token"))
+        # Tidal returns: id, title, artists (list), album (string), duration (seconds)
+        results = client.search_tracks(query, limit=10)
+
+    elif job.target_provider == Provider.YTM:
+        conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.YTM)).first()
+        if not conn:
+             raise HTTPException(status_code=400, detail="Not connected to YouTube Music")
+
+        creds = conn.credentials
+        if isinstance(creds, dict) and "raw" in creds:
+             headers_raw = creds["raw"]
+        else:
+             headers_raw = _headers_to_raw(creds)
+
+        raw_results = ytm.search_tracks(query, headers_raw, filt="songs", top_k=10)
+
+        for r in raw_results:
+             artists = [a["name"] for a in r.get("artists", [])]
+             results.append({
+                 "id": r.get("videoId"),
+                 "title": r.get("title"),
+                 "artists": artists,
+                 "duration": r.get("duration"), # Keep as is (string)
+                 "album": r.get("album", {}).get("name") if r.get("album") else None
+             })
+
+    return JSONResponse({"results": results})
+
 @router.post("/imports/{id}/review")
 def submit_review(
     id: int,
     decisions: str = Form(...), # JSON string
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
-):
+) -> Response:
     job = session.get(ImportJob, id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
-    decision_list = json.loads(decisions) # list of {item_id, decision, match_id?}
+    decision_list = json.loads(decisions) # list of {item_id, decision, match_id?, match_data?}
 
     for d in decision_list:
         item = session.get(ImportItem, d["item_id"])
@@ -133,6 +182,8 @@ def submit_review(
                 item.status = ItemStatus.MATCHED
                 if d.get("match_id"):
                     item.selected_match_id = d["match_id"]
+                    if d.get("match_data"):
+                        item.match_data = d["match_data"]
                 elif item.match_data:
                     item.selected_match_id = item.match_data.get("id")
             elif d["decision"] == "reject":
@@ -148,7 +199,7 @@ def finalize(
     id: int,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-):
+) -> Response:
     job = session.get(ImportJob, id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)

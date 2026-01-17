@@ -26,7 +26,7 @@
     {% if not items %}
       <div class="empty">
          <div class="empty-header">All Reviewed</div>
-         <p class="empty-title">No uncertain items left to review.</p>
+         <p class="empty-title">No items left to review.</p>
          <div class="empty-action">
             <a href="/imports/{{ job.id }}" class="btn btn-primary">Back to Job</a>
          </div>
@@ -60,26 +60,38 @@
                   </div>
 
                   <!-- Match -->
-                  <div class="col-md-5">
+                  <div class="col-md-5 match-col">
                     <div class="text-secondary small">Suggestion</div>
+                    <div class="match-info">
                     {% if item.match_data %}
-                        <div class="fw-bold">{{ item.match_data.title }}</div>
+                        <div class="fw-bold match-title">{{ item.match_data.title }}</div>
+                        <div class="match-artists">
                         {% if item.match_data.artists is iterable and item.match_data.artists is not string %}
-                            <div>{{ item.match_data.artists|join(', ') }}</div>
+                            {{ item.match_data.artists|join(', ') }}
                         {% else %}
-                             <div>{{ item.match_data.artists }}</div>
+                             {{ item.match_data.artists }}
                         {% endif %}
-                        <div class="text-secondary small">{{ item.match_data.duration }}s</div>
+                        </div>
+                        <div class="text-secondary small match-duration">{{ item.match_data.duration }}s</div>
                     {% else %}
-                        <div class="text-danger">No Suggestion</div>
+                        <div class="text-danger match-title">No Suggestion</div>
+                        <div class="match-artists"></div>
+                        <div class="match-duration"></div>
                     {% endif %}
+                    </div>
                  </div>
                </div>
             </div>
             <div class="card-footer">
-               <div class="d-flex justify-content-end gap-2">
-                  <button class="btn btn-outline-danger btn-reject" onclick="decide({{ item.id }}, 'reject')">Reject</button>
-                  <button class="btn btn-outline-success btn-confirm" onclick="decide({{ item.id }}, 'confirm')">Confirm</button>
+               <div class="d-flex justify-content-between align-items-center">
+                   <button class="btn btn-ghost-secondary btn-search" onclick="openSearch({{ item.id }}, '{{ item.original_track_data.name|escape }} {{ item.original_track_data.artists[0]|escape }}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><circle cx="10" cy="10" r="7" /><line x1="21" y1="21" x2="15" y2="15" /></svg>
+                        Search
+                   </button>
+                   <div class="d-flex gap-2">
+                      <button class="btn btn-outline-danger btn-reject" onclick="decide({{ item.id }}, 'reject')">Reject</button>
+                      <button class="btn btn-outline-success btn-confirm" onclick="decide({{ item.id }}, 'confirm')">Confirm</button>
+                   </div>
                </div>
             </div>
          </div>
@@ -93,6 +105,28 @@
     </form>
   </div>
 </div>
+
+<!-- Modal -->
+<div class="modal modal-blur fade" id="searchModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Search Track</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+         <div class="input-group mb-2">
+            <input type="text" class="form-control" id="searchInput" placeholder="Search query...">
+            <button class="btn" type="button" id="btnSearch">Search</button>
+         </div>
+         <div id="searchResults" class="list-group">
+            <!-- Results here -->
+         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -102,10 +136,31 @@
    const decisionsInput = document.getElementById('decisionsInput');
    const form = document.getElementById('reviewForm');
 
-   function decide(id, decision) {
-       decisions[id] = { item_id: id, decision: decision };
+   let currentSearchItemId = null;
+   // Initialize modal safely (in case bootstrap isn't loaded yet? Base should load it)
+   let searchModal;
+   document.addEventListener("DOMContentLoaded", function () {
+        searchModal = new bootstrap.Modal(document.getElementById('searchModal'));
+   });
 
-       // UI Update
+   const searchInput = document.getElementById('searchInput');
+   const searchResults = document.getElementById('searchResults');
+
+   function decide(id, decision) {
+       // If explicit decision is made without manual override, clear previous manual data if any
+       // But usually decide is called by buttons.
+       if (!decisions[id] || decisions[id].decision !== decision) {
+            decisions[id] = { item_id: id, decision: decision };
+       } else {
+            // update existing
+            decisions[id].decision = decision;
+       }
+
+       updateCardUI(id, decision);
+       updateSubmitBtn();
+   }
+
+   function updateCardUI(id, decision, overrideTrack=null) {
        const card = document.querySelector(`.item-card[data-id="${id}"] .card`);
        card.classList.remove('border-success', 'border-danger');
        const btnConf = card.querySelector('.btn-confirm');
@@ -120,18 +175,106 @@
            card.classList.add('border-success');
            btnConf.classList.remove('btn-outline-success');
            btnConf.classList.add('btn-success');
+
+           if (overrideTrack) {
+                // Update match UI
+                const info = card.querySelector('.match-info');
+                info.querySelector('.match-title').textContent = overrideTrack.title;
+                info.querySelector('.match-title').classList.remove('text-danger');
+                info.querySelector('.match-title').classList.add('fw-bold');
+
+                const artists = Array.isArray(overrideTrack.artists) ? overrideTrack.artists.join(', ') : overrideTrack.artists;
+                info.querySelector('.match-artists').textContent = artists;
+                info.querySelector('.match-duration').textContent = (overrideTrack.duration || '') + 's';
+           }
        } else {
            card.classList.add('border-danger');
            btnRej.classList.remove('btn-outline-danger');
            btnRej.classList.add('btn-danger');
        }
+   }
 
+   function updateSubmitBtn() {
        btnSubmit.disabled = Object.keys(decisions).length === 0;
        btnSubmit.innerText = `Submit ${Object.keys(decisions).length} Decisions`;
    }
 
-   // Expose to global scope for inline onclick
+   function openSearch(id, query) {
+       currentSearchItemId = id;
+       searchInput.value = query;
+       searchResults.innerHTML = '';
+       searchModal.show();
+       setTimeout(() => {
+           searchInput.focus();
+           if (query) doSearch(query);
+       }, 500);
+   }
+
+   document.getElementById('btnSearch').addEventListener('click', () => {
+       doSearch(searchInput.value);
+   });
+
+   searchInput.addEventListener('keydown', (e) => {
+       if (e.key === 'Enter') doSearch(searchInput.value);
+   });
+
+   async function doSearch(query) {
+       searchResults.innerHTML = '<div class="text-center p-3"><div class="spinner-border"></div></div>';
+       const formData = new FormData();
+       formData.append('query', query);
+
+       try {
+           const res = await fetch(`/imports/{{ job.id }}/search_track`, {
+               method: 'POST',
+               body: formData
+           });
+           const data = await res.json();
+
+           searchResults.innerHTML = '';
+           if (!data.results || data.results.length === 0) {
+               searchResults.innerHTML = '<div class="list-group-item">No results found</div>';
+               return;
+           }
+
+           data.results.forEach(track => {
+               const el = document.createElement('a');
+               el.className = 'list-group-item list-group-item-action cursor-pointer';
+               el.href = 'javascript:void(0)';
+               el.innerHTML = `
+                   <div class="d-flex w-100 justify-content-between">
+                     <h5 class="mb-1">${track.title}</h5>
+                     <small>${track.duration || ''}</small>
+                   </div>
+                   <p class="mb-1">${Array.isArray(track.artists) ? track.artists.join(', ') : track.artists}</p>
+                   <small>${track.album || ''}</small>
+               `;
+               el.onclick = (e) => {
+                   e.preventDefault();
+                   selectMatch(track);
+               };
+               searchResults.appendChild(el);
+           });
+
+       } catch (err) {
+           searchResults.innerHTML = `<div class="text-danger">Error: ${err.message}</div>`;
+       }
+   }
+
+   function selectMatch(track) {
+       decisions[currentSearchItemId] = {
+           item_id: currentSearchItemId,
+           decision: 'confirm',
+           match_id: track.id,
+           match_data: track
+       };
+
+       updateCardUI(currentSearchItemId, 'confirm', track);
+       searchModal.hide();
+       updateSubmitBtn();
+   }
+
    window.decide = decide;
+   window.openSearch = openSearch;
 
    btnSubmit.addEventListener('click', function() {
        decisionsInput.value = JSON.stringify(Object.values(decisions));
