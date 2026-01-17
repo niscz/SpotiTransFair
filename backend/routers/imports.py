@@ -111,10 +111,53 @@ def review_page(
         raise HTTPException(status_code=404)
     items = [i for i in job.items if i.status in (ItemStatus.UNCERTAIN, ItemStatus.NOT_FOUND)]
 
+    status_counts = {
+        "uncertain": len([i for i in items if i.status == ItemStatus.UNCERTAIN]),
+        "not_found": len([i for i in items if i.status == ItemStatus.NOT_FOUND]),
+    }
+    score_bins = {
+        "0-49%": 0,
+        "50-74%": 0,
+        "75-89%": 0,
+        "90-100%": 0,
+    }
+    score_values = []
+    for item in items:
+        match_data = item.match_data or {}
+        score = match_data.get("_score")
+        if score is None:
+            continue
+        score_percent = max(0, min(100, round(score * 100)))
+        score_values.append(score_percent)
+        if score_percent < 50:
+            score_bins["0-49%"] += 1
+        elif score_percent < 75:
+            score_bins["50-74%"] += 1
+        elif score_percent < 90:
+            score_bins["75-89%"] += 1
+        else:
+            score_bins["90-100%"] += 1
+
+    avg_score = round(sum(score_values) / len(score_values), 1) if score_values else 0
+
+    artist_counts = {}
+    for item in items:
+        artists = item.original_track_data.get("artists", []) if item.original_track_data else []
+        for artist in artists:
+            artist_name = artist.strip()
+            if artist_name:
+                artist_counts[artist_name] = artist_counts.get(artist_name, 0) + 1
+    top_artists = sorted(artist_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
     return templates.TemplateResponse("review.html", {
         "request": request,
         "job": job,
-        "items": items
+        "items": items,
+        "status_counts": status_counts,
+        "avg_score": avg_score,
+        "score_labels": list(score_bins.keys()),
+        "score_values": list(score_bins.values()),
+        "top_artists": top_artists,
     })
 
 @router.post("/imports/{id}/search_track")

@@ -33,70 +33,220 @@
       </div>
     {% endif %}
 
-    <div class="row row-cards" id="review-list">
-      {% for item in items %}
-      <div class="col-12 item-card" data-id="{{ item.id }}">
-         <div class="card">
-            <div class="card-body">
-               <div class="row align-items-center">
-                  <!-- Source -->
-                  <div class="col-md-5">
-                     <div class="text-secondary small">Source (Spotify)</div>
-                     <div class="fw-bold">{{ item.original_track_data.name }}</div>
-                     <div>{{ item.original_track_data.artists|join(', ') }}</div>
-                     <div class="text-secondary small">{{ (item.original_track_data.duration_ms / 1000)|round|int }}s</div>
-                  </div>
+    <div class="row row-cards mb-4">
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-primary text-white avatar">
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12l3 3l3 -3l3 3l3 -3l3 3l3 -3" /><path d="M3 6l3 3l3 -3l3 3l3 -3l3 3l3 -3" /></svg>
+              </span>
+              <div class="ms-3">
+                <div class="text-secondary">Total to Review</div>
+                <div class="h1 mb-0">{{ items|length }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-warning text-white avatar">
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 9v4" /><path d="M12 17v.01" /><path d="M5.07 19h13.86a2 2 0 0 0 1.72 -2.99l-6.93 -12a2 2 0 0 0 -3.44 0l-6.93 12a2 2 0 0 0 1.72 2.99z" /></svg>
+              </span>
+              <div class="ms-3">
+                <div class="text-secondary">Uncertain Matches</div>
+                <div class="h1 mb-0">{{ status_counts.uncertain }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-danger text-white avatar">
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 9v4" /><path d="M12 17v.01" /><path d="M5.07 19h13.86a2 2 0 0 0 1.72 -2.99l-6.93 -12a2 2 0 0 0 -3.44 0l-6.93 12a2 2 0 0 0 1.72 2.99z" /></svg>
+              </span>
+              <div class="ms-3">
+                <div class="text-secondary">Not Found</div>
+                <div class="h1 mb-0">{{ status_counts.not_found }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-success text-white avatar">
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><circle cx="12" cy="12" r="9" /><path d="M9 12l2 2l4 -4" /></svg>
+              </span>
+              <div class="ms-3">
+                <div class="text-secondary">Avg. Match Score</div>
+                <div class="h1 mb-0">{{ avg_score }}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-                  <!-- Score -->
-                  <div class="col-md-2 text-center">
-                     <div class="text-secondary small">Score</div>
-                     <div class="h2 mb-0">
+    <div class="row row-cards mb-4">
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Review Status Mix</h3>
+            <div class="ms-auto text-secondary small">Uncertain vs. not found</div>
+          </div>
+          <div class="card-body">
+            <div id="chart-review-status" style="min-height: 260px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Match Score Distribution</h3>
+            <div class="ms-auto text-secondary small">Quality signal for manual review</div>
+          </div>
+          <div class="card-body">
+            <div id="chart-review-scores" style="min-height: 260px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Top Artists in Review Queue</h3>
+            <div class="ms-auto text-secondary small">Focus where most issues occur</div>
+          </div>
+          <div class="table-responsive">
+            <table class="table card-table table-vcenter">
+              <thead>
+                <tr>
+                  <th>Artist</th>
+                  <th class="text-end">Tracks in review</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if not top_artists %}
+                <tr><td colspan="2" class="text-center text-secondary p-3">No artists to summarize.</td></tr>
+                {% endif %}
+                {% for artist, count in top_artists %}
+                <tr>
+                  <td class="fw-semibold">{{ artist }}</td>
+                  <td class="text-end">{{ count }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4" id="review-list-container">
+      <div class="card-header">
+        <h3 class="card-title">Review Queue</h3>
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+          <div class="text-secondary small">Showing <span id="review-count">{{ items|length }}</span> tracks</div>
+          <select id="review-status-filter" class="form-select form-select-sm" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option value="uncertain">Uncertain</option>
+            <option value="not_found">Not found</option>
+          </select>
+          <input id="review-search" class="form-control form-control-sm" placeholder="Search track or artist" aria-label="Search review queue">
+          <button id="review-clear-filters" class="btn btn-outline-secondary btn-sm" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row row-cards list" id="review-list">
+          {% for item in items %}
+          {% set status_value = item.status.value if item.status.value is defined else item.status %}
+          <div class="col-12 item-card" data-id="{{ item.id }}" data-status="{{ status_value }}">
+             <span class="review-title d-none">{{ item.original_track_data.name }}</span>
+             <span class="review-artist d-none">{{ item.original_track_data.artists|join(', ') }}</span>
+             <span class="review-status d-none">{{ status_value }}</span>
+             <div class="card">
+                <div class="card-body">
+                   <div class="row align-items-center">
+                      <!-- Source -->
+                      <div class="col-md-5">
+                         <div class="text-secondary small">Source (Spotify)</div>
+                         <div class="fw-bold">{{ item.original_track_data.name }}</div>
+                         <div>{{ item.original_track_data.artists|join(', ') }}</div>
+                         <div class="text-secondary small">{{ (item.original_track_data.duration_ms / 1000)|round|int }}s</div>
+                      </div>
+
+                      <!-- Score -->
+                      <div class="col-md-2 text-center">
+                         <div class="text-secondary small">Score</div>
+                         <div class="h2 mb-0">
+                            {% if item.match_data %}
+                               {{ (item.match_data._score * 100)|round|int }}%
+                            {% else %}
+                               0%
+                            {% endif %}
+                         </div>
+                      </div>
+
+                      <!-- Match -->
+                      <div class="col-md-5 match-col">
+                        <div class="text-secondary small">Suggestion</div>
+                        <div class="match-info">
                         {% if item.match_data %}
-                           {{ (item.match_data._score * 100)|round|int }}%
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                              <div class="fw-bold match-title">{{ item.match_data.title }}</div>
+                              <span class="badge bg-cyan-lt manual-badge d-none">Manual</span>
+                            </div>
+                            <div class="match-artists">
+                            {% if item.match_data.artists is iterable and item.match_data.artists is not string %}
+                                {{ item.match_data.artists|join(', ') }}
+                            {% else %}
+                                 {{ item.match_data.artists }}
+                            {% endif %}
+                            </div>
+                            <div class="text-secondary small match-duration">
+                              {% if item.match_data.duration is string and ':' in item.match_data.duration %}
+                                {{ item.match_data.duration }}
+                              {% elif item.match_data.duration %}
+                                {{ item.match_data.duration }}s
+                              {% endif %}
+                            </div>
                         {% else %}
-                           0%
-                        {% endif %}
-                     </div>
-                  </div>
-
-                  <!-- Match -->
-                  <div class="col-md-5 match-col">
-                    <div class="text-secondary small">Suggestion</div>
-                    <div class="match-info">
-                    {% if item.match_data %}
-                        <div class="fw-bold match-title">{{ item.match_data.title }}</div>
-                        <div class="match-artists">
-                        {% if item.match_data.artists is iterable and item.match_data.artists is not string %}
-                            {{ item.match_data.artists|join(', ') }}
-                        {% else %}
-                             {{ item.match_data.artists }}
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                              <div class="text-danger match-title">No Suggestion</div>
+                              <span class="badge bg-cyan-lt manual-badge d-none">Manual</span>
+                            </div>
+                            <div class="match-artists"></div>
+                            <div class="match-duration"></div>
                         {% endif %}
                         </div>
-                        <div class="text-secondary small match-duration">{{ item.match_data.duration }}s</div>
-                    {% else %}
-                        <div class="text-danger match-title">No Suggestion</div>
-                        <div class="match-artists"></div>
-                        <div class="match-duration"></div>
-                    {% endif %}
-                    </div>
-                 </div>
-               </div>
-            </div>
-            <div class="card-footer">
-               <div class="d-flex justify-content-between align-items-center">
-                   <button class="btn btn-ghost-secondary btn-search" onclick="openSearch({{ item.id }}, '{{ item.original_track_data.name|escape }} {{ item.original_track_data.artists[0]|escape }}')">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><circle cx="10" cy="10" r="7" /><line x1="21" y1="21" x2="15" y2="15" /></svg>
-                        Search
-                   </button>
-                   <div class="d-flex gap-2">
-                      <button class="btn btn-outline-danger btn-reject" onclick="decide({{ item.id }}, 'reject')">Reject</button>
-                      <button class="btn btn-outline-success btn-confirm" onclick="decide({{ item.id }}, 'confirm')">Confirm</button>
+                     </div>
                    </div>
-               </div>
-            </div>
-         </div>
+                </div>
+                <div class="card-footer">
+                   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                       <button class="btn btn-ghost-secondary btn-search" data-item-id="{{ item.id }}" data-query="{{ (item.original_track_data.name ~ ' ' ~ (item.original_track_data.artists[0] if item.original_track_data.artists else ''))|e }}" type="button">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><circle cx="10" cy="10" r="7" /><line x1="21" y1="21" x2="15" y2="15" /></svg>
+                            Search
+                       </button>
+                       <div class="d-flex gap-2">
+                          <button class="btn btn-outline-danger btn-reject" type="button" onclick="decide({{ item.id }}, 'reject')">Reject</button>
+                          <button class="btn btn-outline-success btn-confirm" type="button" onclick="decide({{ item.id }}, 'confirm')">Confirm</button>
+                       </div>
+                   </div>
+                </div>
+             </div>
+          </div>
+          {% endfor %}
+        </div>
       </div>
-      {% endfor %}
     </div>
 
     <!-- Hidden Form -->
@@ -119,7 +269,7 @@
             <input type="text" class="form-control" id="searchInput" placeholder="Search query...">
             <button class="btn" type="button" id="btnSearch">Search</button>
          </div>
-         <div id="searchResults" class="list-group">
+         <div id="searchResults" class="list-group" aria-live="polite">
             <!-- Results here -->
          </div>
       </div>
@@ -141,22 +291,36 @@
    let searchModal;
    document.addEventListener("DOMContentLoaded", function () {
         searchModal = new bootstrap.Modal(document.getElementById('searchModal'));
+        document.querySelectorAll('.btn-search').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const itemId = Number(btn.dataset.itemId);
+                const query = btn.dataset.query || '';
+                openSearch(itemId, query);
+            });
+        });
+
+        setupReviewFilters();
+        renderReviewCharts();
    });
 
    const searchInput = document.getElementById('searchInput');
    const searchResults = document.getElementById('searchResults');
 
    function decide(id, decision) {
-       // If explicit decision is made without manual override, clear previous manual data if any
-       // But usually decide is called by buttons.
-       if (!decisions[id] || decisions[id].decision !== decision) {
-            decisions[id] = { item_id: id, decision: decision };
+       const previous = decisions[id] || {};
+       if (decision === 'reject') {
+           decisions[id] = { item_id: id, decision: decision };
        } else {
-            // update existing
-            decisions[id].decision = decision;
+           decisions[id] = {
+               item_id: id,
+               decision: decision,
+               match_id: previous.match_id,
+               match_data: previous.match_data
+           };
        }
 
-       updateCardUI(id, decision);
+       const overrideTrack = decisions[id].match_data || null;
+       updateCardUI(id, decision, overrideTrack);
        updateSubmitBtn();
    }
 
@@ -165,6 +329,7 @@
        card.classList.remove('border-success', 'border-danger');
        const btnConf = card.querySelector('.btn-confirm');
        const btnRej = card.querySelector('.btn-reject');
+       const manualBadge = card.querySelector('.manual-badge');
 
        btnConf.classList.remove('btn-success');
        btnConf.classList.add('btn-outline-success');
@@ -185,12 +350,20 @@
 
                 const artists = Array.isArray(overrideTrack.artists) ? overrideTrack.artists.join(', ') : overrideTrack.artists;
                 info.querySelector('.match-artists').textContent = artists;
-                info.querySelector('.match-duration').textContent = (overrideTrack.duration || '') + 's';
+                info.querySelector('.match-duration').textContent = formatDuration(overrideTrack.duration);
+                if (manualBadge) {
+                  manualBadge.classList.remove('d-none');
+                }
+           } else if (manualBadge) {
+                manualBadge.classList.add('d-none');
            }
        } else {
            card.classList.add('border-danger');
            btnRej.classList.remove('btn-outline-danger');
            btnRej.classList.add('btn-danger');
+           if (manualBadge) {
+             manualBadge.classList.add('d-none');
+           }
        }
    }
 
@@ -203,6 +376,7 @@
        currentSearchItemId = id;
        searchInput.value = query;
        searchResults.innerHTML = '';
+       if (!searchModal) return;
        searchModal.show();
        setTimeout(() => {
            searchInput.focus();
@@ -219,15 +393,23 @@
    });
 
    async function doSearch(query) {
+       const trimmed = (query || '').trim();
+       if (!trimmed) {
+           searchResults.innerHTML = '<div class="list-group-item">Enter a search term to continue.</div>';
+           return;
+       }
        searchResults.innerHTML = '<div class="text-center p-3"><div class="spinner-border"></div></div>';
        const formData = new FormData();
-       formData.append('query', query);
+       formData.append('query', trimmed);
 
        try {
            const res = await fetch(`/imports/{{ job.id }}/search_track`, {
                method: 'POST',
                body: formData
            });
+           if (!res.ok) {
+               throw new Error(`Search failed (${res.status})`);
+           }
            const data = await res.json();
 
            searchResults.innerHTML = '';
@@ -238,16 +420,32 @@
 
            data.results.forEach(track => {
                const el = document.createElement('a');
-               el.className = 'list-group-item list-group-item-action cursor-pointer';
-               el.href = 'javascript:void(0)';
-               el.innerHTML = `
-                   <div class="d-flex w-100 justify-content-between">
-                     <h5 class="mb-1">${track.title}</h5>
-                     <small>${track.duration || ''}</small>
-                   </div>
-                   <p class="mb-1">${Array.isArray(track.artists) ? track.artists.join(', ') : track.artists}</p>
-                   <small>${track.album || ''}</small>
-               `;
+               el.className = 'list-group-item list-group-item-action';
+               el.href = '#';
+
+               const header = document.createElement('div');
+               header.className = 'd-flex w-100 justify-content-between align-items-start gap-3';
+               const title = document.createElement('h5');
+               title.className = 'mb-1';
+               title.textContent = track.title || 'Unknown title';
+               const duration = document.createElement('small');
+               duration.textContent = formatDuration(track.duration);
+               header.appendChild(title);
+               header.appendChild(duration);
+
+               const artists = document.createElement('p');
+               artists.className = 'mb-1 text-secondary';
+               artists.textContent = Array.isArray(track.artists) ? track.artists.join(', ') : (track.artists || '');
+
+               const album = document.createElement('small');
+               album.className = 'text-secondary';
+               album.textContent = track.album || '';
+
+               el.appendChild(header);
+               el.appendChild(artists);
+               if (track.album) {
+                 el.appendChild(album);
+               }
                el.onclick = (e) => {
                    e.preventDefault();
                    selectMatch(track);
@@ -261,6 +459,7 @@
    }
 
    function selectMatch(track) {
+       if (!currentSearchItemId) return;
        decisions[currentSearchItemId] = {
            item_id: currentSearchItemId,
            decision: 'confirm',
@@ -269,8 +468,101 @@
        };
 
        updateCardUI(currentSearchItemId, 'confirm', track);
-       searchModal.hide();
+       if (searchModal) {
+         searchModal.hide();
+       }
        updateSubmitBtn();
+   }
+
+   function formatDuration(value) {
+       if (!value) return '';
+       if (typeof value === 'number') {
+           return formatSeconds(value);
+       }
+       if (typeof value === 'string') {
+           if (value.includes(':')) {
+               return value;
+           }
+           const numeric = Number(value);
+           if (!Number.isNaN(numeric)) {
+               return formatSeconds(numeric);
+           }
+       }
+       return value;
+   }
+
+   function formatSeconds(totalSeconds) {
+       const seconds = Math.max(0, Math.floor(totalSeconds));
+       const minutes = Math.floor(seconds / 60);
+       const remaining = seconds % 60;
+       return `${minutes}:${String(remaining).padStart(2, '0')}`;
+   }
+
+   function setupReviewFilters() {
+       const reviewListEl = document.getElementById('review-list-container');
+       if (!reviewListEl) return;
+       const reviewList = new List(reviewListEl, {
+           listClass: 'list',
+           valueNames: ['review-title', 'review-artist', 'review-status']
+       });
+       const searchInput = document.getElementById('review-search');
+       const statusFilter = document.getElementById('review-status-filter');
+       const clearFilters = document.getElementById('review-clear-filters');
+       const countEl = document.getElementById('review-count');
+       if (searchInput) {
+           searchInput.addEventListener('keyup', function () {
+               reviewList.search(searchInput.value);
+           });
+       }
+       function applyFilters() {
+           const statusValue = statusFilter ? statusFilter.value : '';
+           reviewList.filter(function (item) {
+               if (!statusValue) return true;
+               return item.elm.getAttribute('data-status') === statusValue;
+           });
+       }
+       if (statusFilter) {
+           statusFilter.addEventListener('change', applyFilters);
+       }
+       if (clearFilters) {
+           clearFilters.addEventListener('click', function () {
+               if (statusFilter) statusFilter.value = '';
+               if (searchInput) searchInput.value = '';
+               reviewList.search('');
+               reviewList.filter();
+           });
+       }
+       reviewList.on('updated', function (list) {
+           if (countEl) {
+               countEl.textContent = list.matchingItems.length;
+           }
+       });
+   }
+
+   function renderReviewCharts() {
+       const statusChartEl = document.getElementById('chart-review-status');
+       if (statusChartEl) {
+           const statusOptions = {
+               series: [{{ status_counts.uncertain }}, {{ status_counts.not_found }}],
+               chart: { type: 'donut', height: 260, fontFamily: 'inherit', animations: { enabled: true, easing: 'easeinout', speed: 600 } },
+               labels: ['Uncertain', 'Not found'],
+               colors: ['#f59f00', '#d63939'],
+               legend: { position: 'bottom' }
+           };
+           new ApexCharts(statusChartEl, statusOptions).render();
+       }
+       const scoreChartEl = document.getElementById('chart-review-scores');
+       if (scoreChartEl) {
+           const scoreOptions = {
+               series: [{ data: {{ score_values|tojson }} }],
+               chart: { type: 'bar', height: 260, fontFamily: 'inherit', toolbar: { show: false }, animations: { enabled: true, easing: 'easeinout', speed: 650 } },
+               plotOptions: { bar: { horizontal: true, barHeight: '60%' } },
+               dataLabels: { enabled: false },
+               xaxis: { categories: {{ score_labels|tojson }} },
+               colors: ['#206bc4']
+           };
+           new ApexCharts(scoreChartEl, scoreOptions).render();
+       }
    }
 
    window.decide = decide;

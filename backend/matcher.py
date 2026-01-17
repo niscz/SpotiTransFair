@@ -1,6 +1,6 @@
 import re
 from difflib import SequenceMatcher
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Union
 from models import ItemStatus
 
 def normalize_string(s: Optional[Any]) -> str:
@@ -16,6 +16,31 @@ def normalize_string(s: Optional[Any]) -> str:
     # Collapse spaces
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+def _duration_to_ms(value: Optional[Union[str, int, float]]) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        numeric_value = int(value)
+        if numeric_value > 10000:
+            return numeric_value
+        return numeric_value * 1000
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return 0
+        if cleaned.isdigit():
+            numeric_value = int(cleaned)
+            if numeric_value > 10000:
+                return numeric_value
+            return numeric_value * 1000
+        parts = cleaned.split(":")
+        if all(part.isdigit() for part in parts):
+            seconds = 0
+            for part in parts:
+                seconds = seconds * 60 + int(part)
+            return seconds * 1000
+    return 0
 
 def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
     # Check ISRC first - strong signal
@@ -47,9 +72,7 @@ def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
     # 3. Duration Match
     # Spotify duration is ms
     src_dur = int(source.get("duration_ms") or 0)
-    # TIDAL usually returns seconds.
-    tgt_dur_raw = int(target.get("duration") or 0)
-    tgt_dur = tgt_dur_raw * 1000 # Assume seconds as per typical API
+    tgt_dur = _duration_to_ms(target.get("duration"))
 
     duration_score = 1.0
     if src_dur and tgt_dur:
