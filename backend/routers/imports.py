@@ -42,6 +42,8 @@ def import_detail(id: int, request: Request, session: Session = Depends(get_sess
 @router.get("/imports/{id}/review")
 def review_page(id: int, request: Request, session: Session = Depends(get_session)):
     job = session.get(ImportJob, id)
+    if not job:
+        raise HTTPException(status_code=404)
     items = [i for i in job.items if i.status == ItemStatus.UNCERTAIN]
 
     return templates.TemplateResponse("review.html", {
@@ -57,6 +59,8 @@ def submit_review(
     session: Session = Depends(get_session)
 ):
     job = session.get(ImportJob, id)
+    if not job:
+        raise HTTPException(status_code=404)
     decision_list = json.loads(decisions) # list of {item_id, decision, match_id?}
 
     for d in decision_list:
@@ -79,6 +83,8 @@ def submit_review(
 @router.post("/imports/{id}/finalize")
 def finalize(id: int, session: Session = Depends(get_session)):
     job = session.get(ImportJob, id)
+    if not job:
+        raise HTTPException(status_code=404)
     job.status = JobStatus.IMPORTING
     session.add(job)
     session.commit()
