@@ -76,6 +76,14 @@
             </button>
             <div class="navbar-nav flex-row order-md-last ms-auto">
               <div class="d-none d-md-flex">
+                <a href="https://github.com/niscz/SpotiTransFair" class="nav-link px-0 me-2" target="_blank" rel="noreferrer" title="Source Code" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                  <!-- Download SVG icon from http://tabler-icons.io/i/brand-github -->
+                  <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5" /></svg>
+                </a>
+                <a href="#" class="nav-link px-0 me-2" data-bs-toggle="modal" data-bs-target="#instructions-modal" title="How to Use" data-bs-placement="bottom">
+                  <!-- Download SVG icon from http://tabler-icons.io/i/book -->
+                  <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0" /><path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0" /><path d="M3 6v13" /><path d="M12 6v13" /><path d="M21 6v13" /></svg>
+                </a>
                 <a href="?theme=dark" class="nav-link px-0 hide-theme-dark" title="Enable dark mode" data-bs-toggle="tooltip"
 		   data-bs-placement="bottom">
                   <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" /></svg>
@@ -111,6 +119,75 @@
     <script src="/static/js/apexcharts.min.js" defer></script>
     <script src="/static/js/list.min.js" defer></script>
     {% block scripts %}{% endblock %}
+
+    <!-- Instructions Modal -->
+    <div class="modal modal-blur fade" id="instructions-modal" tabindex="-1" role="dialog" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">How to Use SpotiTransFair</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <ol class="list-group list-group-numbered list-group-flush">
+              <li class="list-group-item">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">Sign in to YouTube Music</div>
+                  Open <a href="https://music.youtube.com/" target="_blank">YouTube Music</a> in your browser and ensure you are logged in.
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">Get Auth Headers</div>
+                  <p>Open <strong>DevTools</strong> (F12) → <strong>Network</strong> tab.</p>
+                  <p>Filter for <code>browse</code>, perform an action on the page (like clicking "Home"), find a valid POST request to <code>browse</code>, and copy the <strong>Request Headers</strong>.</p>
+                  <div class="alert alert-info">The UI provides a "Validate" button to check your headers.</div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">Provide Spotify Playlist</div>
+                  Paste the <strong>public</strong> URL of the Spotify playlist you want to transfer.
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">Choose Options</div>
+                  <ul>
+                    <li><strong>Market:</strong> Affects Spotify search results (defaults to browser language).</li>
+                    <li><strong>Privacy:</strong> Sets the visibility of the new YouTube Music playlist (PRIVATE by default).</li>
+                    <li><strong>Update existing:</strong> Optional. Paste a YouTube Music playlist URL/ID to append missing tracks.</li>
+                  </ul>
+                  <img src="/static/img/screenshot.png" class="img-fluid rounded mt-2 border" alt="Options Screenshot">
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">Connect & Clone</div>
+                  Click "Connect" to check the backend status, then "Clone Playlist" to start the process.
+                  <img src="/static/img/screenshot_2.png" class="img-fluid rounded mt-2 border" alt="Main Interface Screenshot">
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">Done!</div>
+                  A dialog will show the results, including any tracks that couldn't be found.
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">Retry</div>
+                  For missed tracks, use the review dialog to adjust the query, change filters (Songs/Videos/Uploads), see top suggestions, and add them directly to the playlist.
+                </div>
+              </li>
+            </ol>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Theme Toggle Script -->
     <script>
