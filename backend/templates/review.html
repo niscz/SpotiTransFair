@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Review Matches - SpotiTransFair{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="row g-2 align-items-center">
+      <div class="col">
+        <div class="page-pretitle">
+           <a href="/imports/{{ job.id }}">Back to Job</a>
+        </div>
+        <h2 class="page-title">
+          Review Matches
+        </h2>
+      </div>
+      <div class="col-auto">
+         <button class="btn btn-primary" id="btnSubmit" disabled>Submit Decisions</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page-body">
+  <div class="container-xl">
+    {% if not items %}
+      <div class="empty">
+         <div class="empty-header">All Reviewed</div>
+         <p class="empty-title">No uncertain items left to review.</p>
+         <div class="empty-action">
+            <a href="/imports/{{ job.id }}" class="btn btn-primary">Back to Job</a>
+         </div>
+      </div>
+    {% endif %}
+
+    <div class="row row-cards" id="review-list">
+      {% for item in items %}
+      <div class="col-12 item-card" data-id="{{ item.id }}">
+         <div class="card">
+            <div class="card-body">
+               <div class="row align-items-center">
+                  <!-- Source -->
+                  <div class="col-md-5">
+                     <div class="text-secondary small">Source (Spotify)</div>
+                     <div class="fw-bold">{{ item.original_track_data.name }}</div>
+                     <div>{{ item.original_track_data.artists|join(', ') }}</div>
+                     <div class="text-secondary small">{{ (item.original_track_data.duration_ms / 1000)|round|int }}s</div>
+                  </div>
+
+                  <!-- Score -->
+                  <div class="col-md-2 text-center">
+                     <div class="text-secondary small">Score</div>
+                     <div class="h2 mb-0">
+                        {% if item.match_data %}
+                           {{ (item.match_data._score * 100)|round|int }}%
+                        {% else %}
+                           0%
+                        {% endif %}
+                     </div>
+                  </div>
+
+                  <!-- Match -->
+                  <div class="col-md-5">
+                    <div class="text-secondary small">Suggestion</div>
+                    {% if item.match_data %}
+                        <div class="fw-bold">{{ item.match_data.title }}</div>
+                        {% if item.match_data.artists is iterable and item.match_data.artists is not string %}
+                            <div>{{ item.match_data.artists|join(', ') }}</div>
+                        {% else %}
+                             <div>{{ item.match_data.artists }}</div>
+                        {% endif %}
+                        <div class="text-secondary small">{{ item.match_data.duration }}s</div>
+                    {% else %}
+                        <div class="text-danger">No Suggestion</div>
+                    {% endif %}
+                 </div>
+               </div>
+            </div>
+            <div class="card-footer">
+               <div class="d-flex justify-content-end gap-2">
+                  <button class="btn btn-outline-danger btn-reject" onclick="decide({{ item.id }}, 'reject')">Reject</button>
+                  <button class="btn btn-outline-success btn-confirm" onclick="decide({{ item.id }}, 'confirm')">Confirm</button>
+               </div>
+            </div>
+         </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Hidden Form -->
+    <form id="reviewForm" action="/imports/{{ job.id }}/review" method="POST">
+       <input type="hidden" name="decisions" id="decisionsInput">
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+   const decisions = {};
+   const btnSubmit = document.getElementById('btnSubmit');
+   const decisionsInput = document.getElementById('decisionsInput');
+   const form = document.getElementById('reviewForm');
+
+   function decide(id, decision) {
+       decisions[id] = { item_id: id, decision: decision };
+
+       // UI Update
+       const card = document.querySelector(`.item-card[data-id="${id}"] .card`);
+       card.classList.remove('border-success', 'border-danger');
+       const btnConf = card.querySelector('.btn-confirm');
+       const btnRej = card.querySelector('.btn-reject');
+
+       btnConf.classList.remove('btn-success');
+       btnConf.classList.add('btn-outline-success');
+       btnRej.classList.remove('btn-danger');
+       btnRej.classList.add('btn-outline-danger');
+
+       if (decision === 'confirm') {
+           card.classList.add('border-success');
+           btnConf.classList.remove('btn-outline-success');
+           btnConf.classList.add('btn-success');
+       } else {
+           card.classList.add('border-danger');
+           btnRej.classList.remove('btn-outline-danger');
+           btnRej.classList.add('btn-danger');
+       }
+
+       btnSubmit.disabled = Object.keys(decisions).length === 0;
+       btnSubmit.innerText = `Submit ${Object.keys(decisions).length} Decisions`;
+   }
+
+   // Expose to global scope for inline onclick
+   window.decide = decide;
+
+   btnSubmit.addEventListener('click', function() {
+       decisionsInput.value = JSON.stringify(Object.values(decisions));
+       form.submit();
+   });
+</script>
+{% endblock %}

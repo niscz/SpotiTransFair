@@ -3,7 +3,11 @@ import redis
 import logging
 import tempfile
 import ytmusicapi
-from rq import Worker, Queue, Connection
+from rq import Worker, Queue
+# RQ < 1.0 used Connection, check version or use use_connection context if available
+# Actually standard rq worker usage:
+from rq import Worker, Queue
+from redis import Redis
 from sqlmodel import Session, select
 from database import engine
 from models import ImportJob, ImportItem, JobStatus, ItemStatus, Provider, Connection as DBConnection
@@ -206,6 +210,6 @@ def process_import_job(job_id: int):
 if __name__ == "__main__":
     redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
     conn = redis.from_url(redis_url)
-    with Connection(conn):
-        worker = Worker(map(Queue, ["default"]))
-        worker.work()
+    # RQ > 1.0
+    worker = Worker([Queue("default", connection=conn)], connection=conn)
+    worker.work()

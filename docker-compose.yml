@@ -7,7 +7,7 @@ services:
     env_file:
       - .env
     environment:
-      - FRONTEND_URL=http://localhost:5173
+      - FRONTEND_URL=http://localhost:8001
       - DATABASE_URL=postgresql://user:password@postgres:5432/spotitransfair
       - REDIS_URL=redis://redis:6379/0
       - STATS_FILE=/data/stats.json
@@ -56,15 +56,6 @@ services:
     command: python worker.py
     restart: unless-stopped
     shm_size: "256m"
-
-  frontend:
-    build: ./frontend
-    container_name: spotitransfair-frontend
-    ports:
-      - "5173:3000"
-    depends_on:
-      - backend
-    restart: unless-stopped
 
   postgres:
     image: postgres:15-alpine

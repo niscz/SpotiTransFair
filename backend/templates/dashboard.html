@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - SpotiTransFair{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="row g-2 align-items-center">
+      <div class="col">
+        <h2 class="page-title">
+          Dashboard
+        </h2>
+      </div>
+      <div class="col-auto ms-auto d-print-none">
+        <a href="/playlists" class="btn btn-primary d-none d-sm-inline-block">
+          <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg>
+          New Import
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="page-body">
+  <div class="container-xl">
+    <div class="row row-deck row-cards">
+       <!-- Chart -->
+       <div class="col-12">
+          <div class="card">
+             <div class="card-body">
+                <div id="chart-jobs" style="min-height: 240px;"></div>
+             </div>
+          </div>
+       </div>
+
+       <!-- Table -->
+       <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Recent Imports</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="table card-table table-vcenter text-nowrap datatable">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Target</th>
+                  <th>Created</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if not jobs %}
+                <tr><td colspan="5" class="text-center p-3">No jobs found.</td></tr>
+                {% endif %}
+                {% for job in jobs %}
+                <tr>
+                  <td>{{ job.source_playlist_name or job.source_playlist_id }}</td>
+                  <td class="text-uppercase">{{ job.target_provider }}</td>
+                  <td class="text-secondary">{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                  <td>
+                    {% if job.status == 'done' %}
+                      <span class="badge bg-success me-1"></span> Done
+                    {% elif job.status == 'failed' %}
+                      <span class="badge bg-danger me-1"></span> Failed
+                    {% elif job.status == 'running' or job.status == 'importing' %}
+                      <span class="badge bg-primary me-1"></span> {{ job.status|capitalize }}
+                    {% elif job.status == 'waiting_review' %}
+                      <span class="badge bg-warning me-1"></span> Waiting Review
+                    {% else %}
+                       <span class="badge bg-secondary me-1"></span> {{ job.status|capitalize }}
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                     <a href="/imports/{{ job.id }}" class="btn btn-sm btn-outline-primary">Details</a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+      var options = {
+          series: {{ chart_series|safe }},
+          chart: {
+              type: 'donut',
+              height: 240,
+              fontFamily: 'inherit',
+          },
+          labels: {{ chart_labels|safe }},
+          colors: [tabler.getColor("success"), tabler.getColor("danger"), tabler.getColor("secondary")],
+          legend: {
+              position: 'bottom'
+          }
+      };
+      var chart = new ApexCharts(document.querySelector("#chart-jobs"), options);
+      chart.render();
+  });
+</script>
+{% endblock %}

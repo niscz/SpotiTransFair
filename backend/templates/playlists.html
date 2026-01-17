@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Playlists - SpotiTransFair{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="row g-2 align-items-center">
+      <div class="col">
+        <h2 class="page-title">
+          Select Playlists
+        </h2>
+      </div>
+      <div class="col-auto ms-auto d-print-none">
+         <form id="importForm" action="/imports/create" method="POST" class="d-flex gap-2">
+            <input type="hidden" name="playlist_ids" id="playlist_ids_input">
+            <button type="submit" name="target_provider" value="tidal" class="btn btn-dark" id="btnTidal" disabled>
+              Import to TIDAL
+            </button>
+            <button type="submit" name="target_provider" value="ytm" class="btn btn-danger" id="btnYTM" disabled>
+              Import to YTM
+            </button>
+         </form>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="page-body">
+  <div class="container-xl">
+
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <div class="card" id="playlist-table">
+       <div class="card-body border-bottom py-3">
+          <div class="d-flex">
+            <div class="text-secondary">
+              Search:
+              <div class="d-inline-block ms-2">
+                <input type="text" class="form-control form-control-sm search" placeholder="Search playlist...">
+              </div>
+            </div>
+          </div>
+       </div>
+       <div class="table-responsive">
+          <table class="table card-table table-vcenter text-nowrap datatable">
+             <thead>
+               <tr>
+                 <th class="w-1"><input type="checkbox" class="form-check-input" id="selectAll"></th>
+                 <th class="sort cursor-pointer" data-sort="name">Name</th>
+                 <th class="sort cursor-pointer" data-sort="tracks">Tracks</th>
+                 <th>ID</th>
+               </tr>
+             </thead>
+             <tbody class="list">
+               {% for p in playlists %}
+               <tr>
+                 <td>
+                    <input type="checkbox" class="form-check-input playlist-checkbox" value="{{ p.id }}">
+                 </td>
+                 <td class="name">
+                   {% if p.image %}
+                   <span class="avatar avatar-sm me-2" style="background-image: url({{ p.image }})"></span>
+                   {% endif %}
+                   {{ p.name }}
+                 </td>
+                 <td class="tracks">{{ p.tracks }}</td>
+                 <td class="text-secondary">{{ p.id }}</td>
+               </tr>
+               {% endfor %}
+             </tbody>
+          </table>
+       </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+      // List.js for client-side sort/search
+      var playlistList = new List('playlist-table', {
+          valueNames: ['name', 'tracks']
+      });
+
+      const checkBoxes = document.querySelectorAll('.playlist-checkbox');
+      const selectAll = document.getElementById('selectAll');
+      const btnTidal = document.getElementById('btnTidal');
+      const btnYTM = document.getElementById('btnYTM');
+      const hiddenInput = document.getElementById('playlist_ids_input');
+
+      function updateButtons() {
+          const selected = Array.from(checkBoxes).filter(c => c.checked).map(c => c.value);
+          hiddenInput.value = selected.join(',');
+          btnTidal.disabled = selected.length === 0;
+          btnYTM.disabled = selected.length === 0;
+      }
+
+      checkBoxes.forEach(cb => {
+          cb.addEventListener('change', updateButtons);
+      });
+
+      if (selectAll) {
+        selectAll.addEventListener('change', function(e) {
+            checkBoxes.forEach(cb => cb.checked = e.target.checked);
+            updateButtons();
+        });
+      }
+  });
+</script>
+{% endblock %}

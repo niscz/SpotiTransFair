@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Import Job - SpotiTransFair{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="row g-2 align-items-center">
+      <div class="col">
+        <div class="page-pretitle">Import Job</div>
+        <h2 class="page-title">
+          {{ job.source_playlist_name or job.source_playlist_id }}
+        </h2>
+      </div>
+      <div class="col-auto">
+        <span class="badge bg-secondary text-uppercase">{{ job.status }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="page-body">
+  <div class="container-xl">
+
+    <!-- Progress Stats -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <h3 class="card-title">Progress</h3>
+
+            {% set total = stats.total %}
+            {% set p_matched = (stats.matched / total * 100) if total > 0 else 0 %}
+            {% set p_uncertain = (stats.uncertain / total * 100) if total > 0 else 0 %}
+            {% set p_failed = (stats.failed / total * 100) if total > 0 else 0 %}
+
+            <div class="progress progress-xl">
+                <div class="progress-bar bg-success" style="width: {{ p_matched }}%" role="progressbar" title="Matched: {{ stats.matched }}"></div>
+                <div class="progress-bar bg-warning" style="width: {{ p_uncertain }}%" role="progressbar" title="Uncertain: {{ stats.uncertain }}"></div>
+                <div class="progress-bar bg-danger" style="width: {{ p_failed }}%" role="progressbar" title="Failed: {{ stats.failed }}"></div>
+            </div>
+
+            <div class="row text-center mt-3">
+               <div class="col">
+                  <div class="text-secondary">Total</div>
+                  <div class="h2">{{ stats.total }}</div>
+               </div>
+               <div class="col">
+                  <div class="text-secondary">Matched</div>
+                  <div class="h2 text-success">{{ stats.matched }}</div>
+               </div>
+               <div class="col">
+                  <div class="text-secondary">Uncertain</div>
+                  <div class="h2 text-warning">{{ stats.uncertain }}</div>
+               </div>
+               <div class="col">
+                  <div class="text-secondary">Failed</div>
+                  <div class="h2 text-danger">{{ stats.failed }}</div>
+               </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="d-flex gap-2">
+       {% if job.status == 'waiting_review' %}
+          <a href="/imports/{{ job.id }}/review" class="btn btn-warning">
+             Review Matches ({{ stats.uncertain }})
+          </a>
+          <form action="/imports/{{ job.id }}/finalize" method="POST">
+             <button type="submit" class="btn btn-success" onclick="return confirm('Finalize import? Uncertain matches will be skipped.')">
+                Finalize Import
+             </button>
+          </form>
+       {% endif %}
+
+       {% if job.target_playlist_id %}
+          {% if job.target_provider == 'tidal' %}
+            <a href="https://listen.tidal.com/playlist/{{ job.target_playlist_id }}" target="_blank" class="btn btn-primary">Open in TIDAL</a>
+          {% else %}
+             <a href="https://music.youtube.com/playlist?list={{ job.target_playlist_id }}" target="_blank" class="btn btn-primary">Open in YTM</a>
+          {% endif %}
+       {% endif %}
+    </div>
+
+    {% if job.error_message %}
+    <div class="alert alert-danger mt-3">
+       {{ job.error_message }}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

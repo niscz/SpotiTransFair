@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Connect - SpotiTransFair{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+  <div class="container-xl">
+    <div class="row g-2 align-items-center">
+      <div class="col">
+        <h2 class="page-title">
+          Connect Providers
+        </h2>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="page-body">
+  <div class="container-xl">
+    <div class="row row-cards">
+
+      <!-- Spotify -->
+      <div class="col-md-4">
+        <div class="card">
+           <div class="card-status-top {% if spotify_connected %}bg-success{% else %}bg-secondary{% endif %}"></div>
+           <div class="card-header">
+             <h3 class="card-title">Spotify</h3>
+             <div class="card-actions">
+               {% if spotify_connected %}
+                  <span class="text-success d-flex align-items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M5 12l5 5l10 -10" /></svg>
+                    Connected
+                  </span>
+               {% else %}
+                  <span class="text-secondary">Not Connected</span>
+               {% endif %}
+             </div>
+           </div>
+           <div class="card-body">
+              <p class="text-secondary">Source for your playlists.</p>
+              {% if not spotify_connected %}
+                <a href="/auth/spotify/login" class="btn btn-success w-100">Connect Spotify</a>
+              {% else %}
+                <div class="text-muted">Authentication valid.</div>
+              {% endif %}
+           </div>
+        </div>
+      </div>
+
+      <!-- TIDAL -->
+      <div class="col-md-4">
+        <div class="card">
+           <div class="card-status-top {% if tidal_connected %}bg-success{% else %}bg-secondary{% endif %}"></div>
+           <div class="card-header">
+             <h3 class="card-title">TIDAL</h3>
+             <div class="card-actions">
+               {% if tidal_connected %}
+                  <span class="text-success d-flex align-items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M5 12l5 5l10 -10" /></svg>
+                    Connected
+                  </span>
+               {% else %}
+                  <span class="text-secondary">Not Connected</span>
+               {% endif %}
+             </div>
+           </div>
+           <div class="card-body">
+              <p class="text-secondary">Target for migration.</p>
+              {% if not tidal_connected %}
+                <a href="/auth/tidal/login" class="btn btn-dark w-100">Connect TIDAL</a>
+              {% else %}
+                <div class="text-muted">Authentication valid.</div>
+              {% endif %}
+           </div>
+        </div>
+      </div>
+
+      <!-- YTM -->
+      <div class="col-md-4">
+        <div class="card">
+           <div class="card-status-top {% if ytm_connected %}bg-success{% else %}bg-secondary{% endif %}"></div>
+           <div class="card-header">
+             <h3 class="card-title">YouTube Music</h3>
+             <div class="card-actions">
+               {% if ytm_connected %}
+                  <span class="text-success d-flex align-items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M5 12l5 5l10 -10" /></svg>
+                    Connected
+                  </span>
+               {% else %}
+                  <span class="text-secondary">Not Connected</span>
+               {% endif %}
+             </div>
+           </div>
+           <div class="card-body">
+              <p class="text-secondary">Target for migration.</p>
+              <form action="/auth/ytm" method="POST">
+                <div class="mb-3">
+                  <label class="form-label">Raw Headers</label>
+                  <textarea class="form-control" name="headers" rows="4" placeholder="Cookie: ..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Save Headers</button>
+              </form>
+           </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
