@@ -1,9 +1,9 @@
 import re
 from difflib import SequenceMatcher
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Union
 from models import ItemStatus
 
-def normalize_string(s: str) -> str:
+def normalize_string(s: Optional[Any]) -> str:
     if not s:
         return ""
     s = str(s).lower()
@@ -17,6 +17,31 @@ def normalize_string(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+def _duration_to_ms(value: Optional[Union[str, int, float]]) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        numeric_value = int(value)
+        if numeric_value > 10000:
+            return numeric_value
+        return numeric_value * 1000
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return 0
+        if cleaned.isdigit():
+            numeric_value = int(cleaned)
+            if numeric_value > 10000:
+                return numeric_value
+            return numeric_value * 1000
+        parts = cleaned.split(":")
+        if all(part.isdigit() for part in parts):
+            seconds = 0
+            for part in parts:
+                seconds = seconds * 60 + int(part)
+            return seconds * 1000
+    return 0
+
 def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
     # Check ISRC first - strong signal
     src_isrc = source.get("isrc")
@@ -25,13 +50,16 @@ def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
         return 1.0
 
     # 1. Title Match
-    src_title = normalize_string(source.get("name", ""))
-    tgt_title = normalize_string(target.get("title", ""))
+    src_title = normalize_string(source.get("name") or "")
+    tgt_title = normalize_string(target.get("title") or "")
     title_score = SequenceMatcher(None, src_title, tgt_title).ratio()
 
     # 2. Artist Match
-    src_artists = [normalize_string(a) for a in source.get("artists", [])]
-    tgt_artists = [normalize_string(a) for a in target.get("artists", [])]
+    src_artists_raw = source.get("artists") or []
+    tgt_artists_raw = target.get("artists") or []
+
+    src_artists = [normalize_string(a) for a in src_artists_raw]
+    tgt_artists = [normalize_string(a) for a in tgt_artists_raw]
 
     artist_score = 0.0
     if src_artists and tgt_artists:
@@ -43,10 +71,14 @@ def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
 
     # 3. Duration Match
     # Spotify duration is ms
-    src_dur = source.get("duration_ms", 0)
-    # TIDAL usually returns seconds.
-    tgt_dur_raw = target.get("duration", 0)
-    tgt_dur = tgt_dur_raw * 1000 # Assume seconds as per typical API
+    src_dur_raw = source.get("duration_ms")
+    if isinstance(src_dur_raw, (int, float)):
+        src_dur = int(src_dur_raw)
+    elif isinstance(src_dur_raw, str) and src_dur_raw.strip().isdigit():
+        src_dur = int(src_dur_raw.strip())
+    else:
+        src_dur = _duration_to_ms(src_dur_raw)
+    tgt_dur = _duration_to_ms(target.get("duration"))
 
     duration_score = 1.0
     if src_dur and tgt_dur:

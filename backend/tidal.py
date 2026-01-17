@@ -30,7 +30,12 @@ class TidalClient:
         try:
             resp = self._session.request(method, url, headers=headers, params=params, data=data, timeout=20)
             resp.raise_for_status()
-            return resp.json()
+            if not resp.content:
+                return None
+            try:
+                return resp.json()
+            except ValueError as e:
+                raise TidalError(f"TIDAL API returned invalid JSON: {e}") from e
         except requests.exceptions.HTTPError as e:
             msg = f"TIDAL API error: {e}"
             if e.response is not None:
