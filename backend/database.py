@@ -1,7 +1,12 @@
 from sqlmodel import SQLModel, create_engine, Session
 import os
+from pathlib import Path
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./spotitransfair.db")
+# Resolve the absolute path to the backend directory
+BASE_DIR = Path(__file__).resolve().parent
+DEFAULT_DB_URL = f"sqlite:///{BASE_DIR}/spotitransfair.db"
+
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
 
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):

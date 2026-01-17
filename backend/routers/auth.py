@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Response
+from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
@@ -8,18 +8,22 @@ from auth import get_spotify_auth_url, get_tidal_auth_url, exchange_spotify_code
 import ytm
 import secrets
 from itsdangerous import URLSafeSerializer
-import os
+import logging
+from tenant import SECRET_KEY, get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-secure-random-string")
-serializer = URLSafeSerializer(SECRET_KEY)
+
+serializer = URLSafeSerializer(SECRET_KEY, salt="oauth-state")
 
 @router.get("/connect")
-def connect_page(request: Request, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def connect_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
     conn_map = {c.provider: True for c in conns}
 
@@ -46,24 +50,37 @@ def login(provider: Provider):
     return response
 
 @router.get("/callback/{provider}")
-def callback(provider: Provider, code: str, state: str, request: Request, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def callback(
+    provider: Provider,
+    code: str,
+    state: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
 
-    # Verify state
-    cookie_state = request.cookies.get("oauth_state")
-    if not cookie_state:
-        raise HTTPException(status_code=400, detail="State cookie missing")
+    # Helper to get status
+    conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
+    conn_map = {c.provider: True for c in conns}
+    status = {
+        "spotify_connected": conn_map.get(Provider.SPOTIFY, False),
+        "tidal_connected": conn_map.get(Provider.TIDAL, False),
+        "ytm_connected": conn_map.get(Provider.YTM, False)
+    }
 
     try:
-        original_state = serializer.loads(cookie_state)
-        if not secrets.compare_digest(original_state, state):
-            raise HTTPException(status_code=400, detail="State mismatch")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid state")
+        # Verify state
+        cookie_state = request.cookies.get("oauth_state")
+        if not cookie_state:
+            raise Exception("State cookie missing. Please try again.")
 
-    try:
+        try:
+            original_state = serializer.loads(cookie_state)
+            if not secrets.compare_digest(original_state, state):
+                raise Exception("State mismatch. Possible CSRF attack.")
+        except Exception:
+            raise Exception("Invalid state cookie.")
+
         tokens = {}
         if provider == Provider.SPOTIFY:
             tokens = exchange_spotify_code(code)
@@ -83,16 +100,16 @@ def callback(provider: Provider, code: str, state: str, request: Request, sessio
         return templates.TemplateResponse("connect.html", {
             "request": request,
             "error": str(e),
-            "spotify_connected": False, # Simplified
-            "tidal_connected": False,
-            "ytm_connected": False
+            **status
         })
 
 @router.post("/auth/ytm")
-def auth_ytm(request: Request, headers: str = Form(...), session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def auth_ytm(
+    request: Request,
+    headers: str = Form(...),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
 
     valid, msg = ytm.validate_headers(headers)
     if not valid:

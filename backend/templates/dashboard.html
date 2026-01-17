@@ -92,6 +92,7 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Imports by Day</h3>
+            <div class="ms-auto text-secondary small">7-day volume</div>
           </div>
           <div class="card-body">
             <div id="chart-volume" style="min-height: 260px;"></div>
@@ -112,9 +113,99 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Item Match Quality</h3>
+            <div class="ms-auto text-secondary small">Overall match rate {{ overall_match_rate }}%</div>
           </div>
           <div class="card-body">
             <div id="chart-items" style="min-height: 260px;"></div>
+          </div>
+        </div>
+       </div>
+
+       <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Status Timeline</h3>
+            <div class="ms-auto text-secondary small">Stacked overview of the last 7 days</div>
+          </div>
+          <div class="card-body">
+            <div id="chart-status-timeline" style="min-height: 280px;"></div>
+          </div>
+        </div>
+       </div>
+
+       <div class="col-12 col-xl-7">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Provider Performance</h3>
+            <div class="ms-auto text-secondary small">Job and match efficiency</div>
+          </div>
+          <div class="table-responsive">
+            <table class="table card-table table-vcenter text-nowrap" id="provider-table">
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Total Jobs</th>
+                  <th>Done</th>
+                  <th>Failed</th>
+                  <th>In Review</th>
+                  <th>Running</th>
+                  <th>Match Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for provider in provider_table %}
+                <tr data-provider="{{ provider.provider }}">
+                  <td class="fw-semibold text-capitalize">{{ provider.name }}</td>
+                  <td>{{ provider.total_jobs }}</td>
+                  <td class="text-success">{{ provider.done }}</td>
+                  <td class="text-danger">{{ provider.failed }}</td>
+                  <td class="text-warning">{{ provider.waiting }}</td>
+                  <td class="text-info">{{ provider.running }}</td>
+                  <td>
+                    <span class="badge bg-primary-lt">{{ provider.match_rate }}%</span>
+                    <div class="text-secondary small">{{ provider.matched_items }} / {{ provider.total_items }} items</div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+       </div>
+
+       <div class="col-12 col-xl-5">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Top Jobs by Items</h3>
+            <div class="ms-auto text-secondary small">Quick review focus list</div>
+          </div>
+          <div class="table-responsive">
+            <table class="table card-table table-vcenter" id="jobs-summary-table">
+              <thead>
+                <tr>
+                  <th>Playlist</th>
+                  <th>Provider</th>
+                  <th>Items</th>
+                  <th>Match Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if not job_activity %}
+                <tr><td colspan="4" class="text-center text-secondary p-3">No import activity yet.</td></tr>
+                {% endif %}
+                {% for job in job_activity %}
+                <tr data-status="{{ job.status }}" data-provider="{{ job.provider }}">
+                  <td class="fw-semibold">{{ job.source }}</td>
+                  <td class="text-uppercase">{{ job.provider }}</td>
+                  <td>{{ job.total_items }}</td>
+                  <td>
+                    <span class="badge bg-azure-lt">{{ job.match_rate }}%</span>
+                    <div class="text-secondary small">{{ job.matched_items }} matched</div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
         </div>
        </div>
@@ -199,15 +290,15 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
       var statusOptions = {
-          series: {{ chart_series|safe }},
+          series: {{ chart_series|tojson }},
           chart: {
               type: 'donut',
               height: 260,
               fontFamily: 'inherit',
               animations: { enabled: true, easing: 'easeinout', speed: 600 }
           },
-          labels: {{ chart_labels|safe }},
-          colors: [tabler.getColor("success"), tabler.getColor("danger"), tabler.getColor("warning"), tabler.getColor("primary"), tabler.getColor("secondary")],
+          labels: {{ chart_labels|tojson }},
+          colors: ["#2fb344", "#d63939", "#f76707", "#206bc4", "#6e7582"],
           legend: { position: 'bottom' }
       };
       new ApexCharts(document.querySelector("#chart-jobs"), statusOptions).render();
@@ -215,7 +306,7 @@
       var volumeOptions = {
           series: [{
               name: 'Imports',
-              data: {{ day_values|safe }}
+              data: {{ day_values|tojson }}
           }],
           chart: {
               type: 'area',
@@ -227,22 +318,22 @@
           dataLabels: { enabled: false },
           stroke: { curve: 'smooth', width: 2 },
           fill: { type: 'gradient', gradient: { shadeIntensity: 0.3, opacityFrom: 0.4, opacityTo: 0.05 } },
-          xaxis: { categories: {{ day_labels|safe }} },
-          colors: [tabler.getColor("primary")]
+          xaxis: { categories: {{ day_labels|tojson }} },
+          colors: ["#206bc4"]
       };
       new ApexCharts(document.querySelector("#chart-volume"), volumeOptions).render();
 
       var providerOptions = {
-          series: {{ provider_series|safe }},
+          series: {{ provider_series|tojson }},
           chart: { type: 'pie', height: 260, fontFamily: 'inherit', animations: { enabled: true, speed: 600 } },
-          labels: {{ provider_labels|safe }},
-          colors: [tabler.getColor("success"), tabler.getColor("indigo"), tabler.getColor("red")],
+          labels: {{ provider_labels|tojson }},
+          colors: ["#2fb344", "#4263eb", "#d63939"],
           legend: { position: 'bottom' }
       };
       new ApexCharts(document.querySelector("#chart-providers"), providerOptions).render();
 
       var itemOptions = {
-          series: [{ data: {{ item_series|safe }} }],
+          series: [{ data: {{ item_series|tojson }} }],
           chart: {
               type: 'bar',
               height: 260,
@@ -252,10 +343,28 @@
           },
           plotOptions: { bar: { horizontal: true, barHeight: '60%' } },
           dataLabels: { enabled: false },
-          xaxis: { categories: {{ item_labels|safe }} },
-          colors: [tabler.getColor("azure")]
+          xaxis: { categories: {{ item_labels|tojson }} },
+          colors: ["#4299e1"]
       };
       new ApexCharts(document.querySelector("#chart-items"), itemOptions).render();
+
+      var statusTimelineOptions = {
+          series: {{ status_timeline_series|tojson }},
+          chart: {
+              type: 'bar',
+              height: 280,
+              stacked: true,
+              fontFamily: 'inherit',
+              toolbar: { show: false },
+              animations: { enabled: true, easing: 'easeinout', speed: 700 }
+          },
+          plotOptions: { bar: { horizontal: false, columnWidth: '55%' } },
+          dataLabels: { enabled: false },
+          xaxis: { categories: {{ day_labels|tojson }} },
+          legend: { position: 'bottom' },
+          colors: ["#2fb344", "#d63939", "#f59f00", "#206bc4", "#6e7582"]
+      };
+      new ApexCharts(document.querySelector("#chart-status-timeline"), statusTimelineOptions).render();
 
       var tableElement = document.getElementById('imports-table');
       if (tableElement) {
@@ -304,6 +413,39 @@
           if (countEl) {
             countEl.textContent = list.matchingItems.length;
           }
+        });
+      }
+
+      var providerTable = document.getElementById('provider-table');
+      if (providerTable) {
+        var providerRows = providerTable.querySelectorAll('tbody tr');
+        providerRows.forEach(function (row) {
+          row.addEventListener('click', function () {
+            var provider = row.getAttribute('data-provider');
+            if (providerFilter) {
+              providerFilter.value = provider;
+              providerFilter.dispatchEvent(new Event('change'));
+              if (tableElement) {
+                tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }
+          });
+        });
+      }
+
+      var jobsSummaryTable = document.getElementById('jobs-summary-table');
+      if (jobsSummaryTable) {
+        jobsSummaryTable.querySelectorAll('tbody tr[data-status]').forEach(function (row) {
+          row.addEventListener('click', function () {
+            var status = row.getAttribute('data-status');
+            if (statusFilter) {
+              statusFilter.value = status;
+              statusFilter.dispatchEvent(new Event('change'));
+              if (tableElement) {
+                tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }
+          });
         });
       }
   });
