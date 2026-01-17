@@ -19,7 +19,7 @@
   </div>
 </div>
 <div class="page-body">
-  <div class="container-xl">
+    <div class="container-xl">
 
     <!-- Progress Stats -->
     <div class="card mb-3">
@@ -30,11 +30,13 @@
             {% set p_matched = (stats.matched / total * 100) if total > 0 else 0 %}
             {% set p_uncertain = (stats.uncertain / total * 100) if total > 0 else 0 %}
             {% set p_failed = (stats.failed / total * 100) if total > 0 else 0 %}
+            {% set p_skipped = (stats.skipped / total * 100) if total > 0 else 0 %}
 
             <div class="progress progress-xl">
                 <div class="progress-bar bg-success" style="width: {{ p_matched }}%" role="progressbar" title="Matched: {{ stats.matched }}"></div>
                 <div class="progress-bar bg-warning" style="width: {{ p_uncertain }}%" role="progressbar" title="Uncertain: {{ stats.uncertain }}"></div>
                 <div class="progress-bar bg-danger" style="width: {{ p_failed }}%" role="progressbar" title="Failed: {{ stats.failed }}"></div>
+                <div class="progress-bar bg-secondary" style="width: {{ p_skipped }}%" role="progressbar" title="Skipped: {{ stats.skipped }}"></div>
             </div>
 
             <div class="row text-center mt-3">
@@ -54,8 +56,50 @@
                   <div class="text-secondary">Failed</div>
                   <div class="h2 text-danger">{{ stats.failed }}</div>
                </div>
+               <div class="col">
+                  <div class="text-secondary">Skipped</div>
+                  <div class="h2 text-secondary">{{ stats.skipped }}</div>
+               </div>
             </div>
         </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="row row-cards mb-3">
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Item Status Mix</h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-status-mix" style="min-height: 260px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Top Artists</h3>
+          </div>
+          <div class="card-body">
+            {% if stats.total == 0 %}
+              <div class="text-secondary">No items yet.</div>
+            {% else %}
+              <div id="chart-top-artists" style="min-height: 260px;"></div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Match Score Distribution</h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-score-distribution" style="min-height: 260px;"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Actions -->
@@ -88,4 +132,70 @@
 
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var statusOptions = {
+      series: {{ status_series|safe }},
+      chart: {
+        type: 'donut',
+        height: 260,
+        fontFamily: 'inherit',
+        animations: { enabled: true, easing: 'easeinout', speed: 600 }
+      },
+      labels: {{ status_labels|safe }},
+      colors: [
+        tabler.getColor("success"),
+        tabler.getColor("warning"),
+        tabler.getColor("danger"),
+        tabler.getColor("secondary")
+      ],
+      legend: { position: 'bottom' }
+    };
+    new ApexCharts(document.querySelector("#chart-status-mix"), statusOptions).render();
+
+    var topArtistsElement = document.querySelector("#chart-top-artists");
+    if (topArtistsElement) {
+      var topArtistsOptions = {
+        series: [{
+          name: 'Tracks',
+          data: {{ top_artist_values|safe }}
+        }],
+        chart: {
+          type: 'bar',
+          height: 260,
+          fontFamily: 'inherit',
+          toolbar: { show: false },
+          animations: { enabled: true, easing: 'easeinout', speed: 700 }
+        },
+        dataLabels: { enabled: false },
+        xaxis: { categories: {{ top_artist_labels|safe }} },
+        colors: [tabler.getColor("primary")]
+      };
+      new ApexCharts(topArtistsElement, topArtistsOptions).render();
+    }
+
+    var scoreOptions = {
+      series: [{
+        name: 'Items',
+        data: {{ score_values|safe }}
+      }],
+      chart: {
+        type: 'area',
+        height: 260,
+        fontFamily: 'inherit',
+        toolbar: { show: false },
+        animations: { enabled: true, easing: 'easeinout', speed: 700 }
+      },
+      dataLabels: { enabled: false },
+      stroke: { curve: 'smooth', width: 2 },
+      fill: { type: 'gradient', gradient: { shadeIntensity: 0.3, opacityFrom: 0.4, opacityTo: 0.05 } },
+      xaxis: { categories: {{ score_labels|safe }} },
+      colors: [tabler.getColor("azure")]
+    };
+    new ApexCharts(document.querySelector("#chart-score-distribution"), scoreOptions).render();
+  });
+</script>
 {% endblock %}

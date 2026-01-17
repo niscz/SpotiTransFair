@@ -121,11 +121,28 @@
 
        <!-- Table -->
        <div class="col-12">
-        <div class="card">
+       <div class="card">
           <div class="card-header">
             <h3 class="card-title">Recent Imports</h3>
-            <div class="ms-auto w-50">
+            <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+              <div class="text-secondary small">Showing <span id="imports-count">{{ jobs|length }}</span> imports</div>
+              <select id="imports-status-filter" class="form-select form-select-sm" aria-label="Filter by status">
+                <option value="">All statuses</option>
+                <option value="done">Done</option>
+                <option value="failed">Failed</option>
+                <option value="waiting_review">Waiting review</option>
+                <option value="running">Running</option>
+                <option value="importing">Importing</option>
+                <option value="queued">Queued</option>
+              </select>
+              <select id="imports-provider-filter" class="form-select form-select-sm" aria-label="Filter by provider">
+                <option value="">All providers</option>
+                <option value="ytm">YouTube Music</option>
+                <option value="tidal">TIDAL</option>
+                <option value="spotify">Spotify</option>
+              </select>
               <input id="imports-search" class="form-control form-control-sm" placeholder="Search imports (playlist, status, provider)" aria-label="Search imports">
+              <button id="imports-clear-filters" class="btn btn-outline-secondary btn-sm" type="button">Clear</button>
             </div>
           </div>
           <div class="table-responsive">
@@ -144,10 +161,11 @@
                 <tr><td colspan="5" class="text-center p-3">No jobs found.</td></tr>
                 {% endif %}
                 {% for job in jobs %}
-                <tr>
-                  {% set status_value = job.status.value if job.status.value is defined else job.status %}
+                {% set status_value = job.status.value if job.status.value is defined else job.status %}
+                {% set provider_value = job.target_provider.value if job.target_provider.value is defined else job.target_provider %}
+                <tr data-status="{{ status_value }}" data-provider="{{ provider_value }}">
                   <td class="import-source">{{ job.source_playlist_name or job.source_playlist_id }}</td>
-                  <td class="import-target text-uppercase">{{ job.target_provider.value if job.target_provider.value is defined else job.target_provider }}</td>
+                  <td class="import-target text-uppercase">{{ provider_value }}</td>
                   <td class="import-created text-secondary">{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                   <td class="import-status">
                     {% if status_value == 'done' %}
@@ -246,11 +264,47 @@
           valueNames: ['import-source', 'import-target', 'import-created', 'import-status']
         });
         var searchInput = document.getElementById('imports-search');
+        var statusFilter = document.getElementById('imports-status-filter');
+        var providerFilter = document.getElementById('imports-provider-filter');
+        var clearFilters = document.getElementById('imports-clear-filters');
+        var countEl = document.getElementById('imports-count');
         if (searchInput) {
           searchInput.addEventListener('keyup', function () {
             tableList.search(searchInput.value);
           });
         }
+        function applyFilters() {
+          var statusValue = statusFilter ? statusFilter.value : '';
+          var providerValue = providerFilter ? providerFilter.value : '';
+          tableList.filter(function (item) {
+            var row = item.elm;
+            var rowStatus = row.getAttribute('data-status');
+            var rowProvider = row.getAttribute('data-provider');
+            var statusMatch = !statusValue || rowStatus === statusValue;
+            var providerMatch = !providerValue || rowProvider === providerValue;
+            return statusMatch && providerMatch;
+          });
+        }
+        if (statusFilter) {
+          statusFilter.addEventListener('change', applyFilters);
+        }
+        if (providerFilter) {
+          providerFilter.addEventListener('change', applyFilters);
+        }
+        if (clearFilters) {
+          clearFilters.addEventListener('click', function () {
+            if (statusFilter) statusFilter.value = '';
+            if (providerFilter) providerFilter.value = '';
+            if (searchInput) searchInput.value = '';
+            tableList.search('');
+            tableList.filter();
+          });
+        }
+        tableList.on('updated', function (list) {
+          if (countEl) {
+            countEl.textContent = list.matchingItems.length;
+          }
+        });
       }
   });
 </script>
