@@ -7,16 +7,17 @@ from sqlmodel import Session, select
 
 from database import get_session
 from models import User, ImportJob, JobStatus, ItemStatus, Provider, ImportItem
+from tenant import get_current_user
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 @router.get("/")
-def dashboard(request: Request, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        # Should not happen given startup
-        return "Initializing..."
+def dashboard(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
 
     jobs = session.exec(
         select(ImportJob)

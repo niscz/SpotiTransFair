@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Depends, HTTPException, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlmodel import Session, select
+from sqlmodel import Session
 from database import get_session
 from models import User, ImportJob, ImportItem, ItemStatus, JobStatus
 from worker import finalize_import_job
@@ -9,6 +9,7 @@ from rq import Queue
 import redis
 import os
 import json
+from tenant import get_current_user
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -18,9 +19,14 @@ redis_conn = redis.from_url(redis_url)
 q = Queue(connection=redis_conn)
 
 @router.get("/imports/{id}")
-def import_detail(id: int, request: Request, session: Session = Depends(get_session)):
+def import_detail(
+    id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     job = session.get(ImportJob, id)
-    if not job:
+    if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
 
     total = len(job.items)
@@ -91,9 +97,14 @@ def import_detail(id: int, request: Request, session: Session = Depends(get_sess
     })
 
 @router.get("/imports/{id}/review")
-def review_page(id: int, request: Request, session: Session = Depends(get_session)):
+def review_page(
+    id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     job = session.get(ImportJob, id)
-    if not job:
+    if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
     items = [i for i in job.items if i.status == ItemStatus.UNCERTAIN]
 
@@ -107,10 +118,11 @@ def review_page(id: int, request: Request, session: Session = Depends(get_sessio
 def submit_review(
     id: int,
     decisions: str = Form(...), # JSON string
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
     job = session.get(ImportJob, id)
-    if not job:
+    if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
     decision_list = json.loads(decisions) # list of {item_id, decision, match_id?}
 
@@ -132,9 +144,13 @@ def submit_review(
     return RedirectResponse(f"/imports/{id}", status_code=303)
 
 @router.post("/imports/{id}/finalize")
-def finalize(id: int, session: Session = Depends(get_session)):
+def finalize(
+    id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     job = session.get(ImportJob, id)
-    if not job:
+    if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
     job.status = JobStatus.IMPORTING
     session.add(job)
