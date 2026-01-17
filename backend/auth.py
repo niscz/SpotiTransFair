@@ -19,18 +19,21 @@ TIDAL_CLIENT_ID = os.getenv("TIDAL_CLIENT_ID")
 TIDAL_CLIENT_SECRET = os.getenv("TIDAL_CLIENT_SECRET")
 TIDAL_REDIRECT_URI = os.getenv("TIDAL_REDIRECT_URI", "http://localhost:8001/callback/tidal")
 
-if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise RuntimeError("Missing Spotify Credentials (SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET)")
-
-if not TIDAL_CLIENT_ID or not TIDAL_CLIENT_SECRET:
-    raise RuntimeError("Missing TIDAL Credentials (TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET)")
-
 if "localhost" in SPOTIFY_REDIRECT_URI:
     logger.warning(f"Using default or localhost callback for Spotify: {SPOTIFY_REDIRECT_URI}")
 if "localhost" in TIDAL_REDIRECT_URI:
     logger.warning(f"Using default or localhost callback for TIDAL: {TIDAL_REDIRECT_URI}")
 
+def _require_credentials(
+    provider: str, client_id: str | None, client_secret: str | None, *, env_prefix: str
+) -> None:
+    if not client_id or not client_secret:
+        raise RuntimeError(
+            f"Missing {provider} credentials. Set {env_prefix}_CLIENT_ID and {env_prefix}_CLIENT_SECRET."
+        )
+
 def get_spotify_auth_url(state: str) -> str:
+    _require_credentials("SPOTIFY", SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, env_prefix="SPOTIPY")
     params = {
         "client_id": SPOTIFY_CLIENT_ID,
         "response_type": "code",
@@ -41,6 +44,7 @@ def get_spotify_auth_url(state: str) -> str:
     return "https://accounts.spotify.com/authorize?" + urlencode(params)
 
 def get_tidal_auth_url(state: str) -> str:
+    _require_credentials("TIDAL", TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET, env_prefix="TIDAL")
     params = {
         "client_id": TIDAL_CLIENT_ID,
         "response_type": "code",
@@ -51,6 +55,7 @@ def get_tidal_auth_url(state: str) -> str:
     return "https://login.tidal.com/authorize?" + urlencode(params)
 
 def exchange_spotify_code(code: str) -> Dict[str, Any]:
+    _require_credentials("SPOTIFY", SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, env_prefix="SPOTIPY")
     url = "https://accounts.spotify.com/api/token"
     headers = {
         "Authorization": "Basic " + base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode(),
@@ -66,6 +71,7 @@ def exchange_spotify_code(code: str) -> Dict[str, Any]:
     return resp.json()
 
 def exchange_tidal_code(code: str) -> Dict[str, Any]:
+    _require_credentials("TIDAL", TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET, env_prefix="TIDAL")
     url = "https://auth.tidal.com/v1/oauth2/token"
     headers = {
         "Authorization": "Basic " + base64.b64encode(f"{TIDAL_CLIENT_ID}:{TIDAL_CLIENT_SECRET}".encode()).decode(),
