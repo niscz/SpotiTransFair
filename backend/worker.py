@@ -39,6 +39,10 @@ def finalize_import_job(job_id: int):
 
             if job.target_provider == Provider.TIDAL:
                 tidal_conn = session.exec(select(DBConnection).where(DBConnection.user_id == job.user_id, DBConnection.provider == Provider.TIDAL)).first()
+                if not tidal_conn:
+                    raise RuntimeError("TIDAL connection not found for user.")
+                if not tidal_conn.credentials.get("access_token"):
+                    raise RuntimeError("TIDAL access token missing for user.")
                 tidal_client = TidalClient(access_token=tidal_conn.credentials.get("access_token"))
 
                 # Create Playlist
@@ -50,11 +54,15 @@ def finalize_import_job(job_id: int):
 
             elif job.target_provider == Provider.YTM:
                 ytm_conn = session.exec(select(DBConnection).where(DBConnection.user_id == job.user_id, DBConnection.provider == Provider.YTM)).first()
+                if not ytm_conn:
+                    raise RuntimeError("YTM connection not found for user.")
                 creds = ytm_conn.credentials
                 if isinstance(creds, dict) and "raw" in creds:
                     headers_raw = creds["raw"]
                 else:
                     headers_raw = _headers_to_raw(creds)
+                if not headers_raw:
+                    raise RuntimeError("YTM authentication headers missing for user.")
 
                 temp_path = None
                 try:
@@ -112,9 +120,13 @@ def process_import_job(job_id: int):
 
             # 1. Fetch Source Tracks (Spotify)
             spotify_conn = session.exec(select(DBConnection).where(DBConnection.user_id == job.user_id, DBConnection.provider == Provider.SPOTIFY)).first()
+            if not spotify_conn:
+                raise RuntimeError("Spotify connection not found for user.")
 
             token = spotify_conn.credentials.get("access_token") if spotify_conn else None
             refresh = spotify_conn.credentials.get("refresh_token") if spotify_conn else None
+            if not token and not refresh:
+                raise RuntimeError("Spotify credentials are missing access and refresh tokens.")
 
             def on_token_refresh(new_token_info):
                 if spotify_conn:
