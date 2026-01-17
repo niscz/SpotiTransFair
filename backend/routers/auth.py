@@ -9,10 +9,18 @@ import ytm
 import secrets
 from itsdangerous import URLSafeSerializer
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-secure-random-string")
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_urlsafe(32)
+    logger.warning("SECRET_KEY not set. Generated a random key. Pending OAuth flows will be invalidated on restart.")
+
 serializer = URLSafeSerializer(SECRET_KEY)
 
 @router.get("/connect")
