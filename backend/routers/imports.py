@@ -234,12 +234,13 @@ def submit_review(
         item = session.get(ImportItem, d["item_id"])
         if item and item.job_id == id:
             if d["decision"] == "confirm":
-                item.status = ItemStatus.MATCHED
                 if d.get("match_id"):
+                    item.status = ItemStatus.MATCHED
                     item.selected_match_id = d["match_id"]
                     if d.get("match_data"):
                         item.match_data = d["match_data"]
-                elif item.match_data:
+                elif item.match_data and item.match_data.get("id"):
+                    item.status = ItemStatus.MATCHED
                     item.selected_match_id = item.match_data.get("id")
             elif d["decision"] == "reject":
                 item.status = ItemStatus.NOT_FOUND
