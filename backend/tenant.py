@@ -17,8 +17,10 @@ TENANT_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    SECRET_KEY = secrets.token_urlsafe(32)
-    logger.warning("SECRET_KEY not set. Generated a random key. Sessions will be invalidated on restart.")
+    raise RuntimeError(
+        "SECRET_KEY is required for tenant cookies. Set SECRET_KEY to a stable value to avoid "
+        "invalidating sessions across restarts or multiple workers."
+    )
 
 tenant_serializer = URLSafeSerializer(SECRET_KEY, salt="tenant")
 
