@@ -5,3 +5,4 @@ filecontents.sh
 docker-compose.*.yml
 /data*/*
 /geoip/*
+backend_v*.log

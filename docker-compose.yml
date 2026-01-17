@@ -7,12 +7,14 @@ services:
     env_file:
       - .env
     environment:
-      - FRONTEND_URL=http://localhost:5173
+      - FRONTEND_URL=http://localhost:8001
+      - DATABASE_URL=postgresql://user:password@postgres:5432/spotitransfair
+      - REDIS_URL=redis://redis:6379/0
       - STATS_FILE=/data/stats.json
-      - WEB_CONCURRENCY=3
       - GEOIP_DB=/geoip/GeoLite2-Country.mmdb
       - TMPDIR=/ram
     volumes:
+      - ./backend:/app
       - ./data:/data
       - ./geoip/GeoLite2-Country.mmdb:/geoip/GeoLite2-Country.mmdb:ro
       - type: tmpfs
@@ -20,25 +22,56 @@ services:
         tmpfs:
           size: 64m
           mode: 1777
-    healthcheck:
-      test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request,sys;sys.exit(0) if urllib.request.urlopen('http://localhost:8001/').status==200 else sys.exit(1)\nPY"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+    depends_on:
+      - postgres
+      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
     restart: unless-stopped
     shm_size: "256m"
 
-  frontend:
-    build: ./frontend
-    container_name: spotitransfair-frontend
-    ports:
-      - "5173:8080"
+  worker:
+    build: ./backend
+    container_name: spotitransfair-worker
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/spotitransfair
+      - REDIS_URL=redis://redis:6379/0
+      - STATS_FILE=/data/stats.json
+      - GEOIP_DB=/geoip/GeoLite2-Country.mmdb
+      - TMPDIR=/ram
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+      - ./geoip/GeoLite2-Country.mmdb:/geoip/GeoLite2-Country.mmdb:ro
+      - type: tmpfs
+        target: /ram
+        tmpfs:
+          size: 64m
+          mode: 1777
     depends_on:
       - backend
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"] 
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      - postgres
+      - redis
+    command: python worker.py
     restart: unless-stopped
-  
+    shm_size: "256m"
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: spotitransfair-postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: spotitransfair
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: spotitransfair-redis
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
