@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Response
+from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
@@ -8,26 +8,22 @@ from auth import get_spotify_auth_url, get_tidal_auth_url, exchange_spotify_code
 import ytm
 import secrets
 from itsdangerous import URLSafeSerializer
-import os
 import logging
+from tenant import SECRET_KEY, get_current_user
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    SECRET_KEY = secrets.token_urlsafe(32)
-    logger.warning("SECRET_KEY not set. Generated a random key. Pending OAuth flows will be invalidated on restart.")
-
-serializer = URLSafeSerializer(SECRET_KEY)
+serializer = URLSafeSerializer(SECRET_KEY, salt="oauth-state")
 
 @router.get("/connect")
-def connect_page(request: Request, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def connect_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
     conn_map = {c.provider: True for c in conns}
 
@@ -54,10 +50,14 @@ def login(provider: Provider):
     return response
 
 @router.get("/callback/{provider}")
-def callback(provider: Provider, code: str, state: str, request: Request, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        return RedirectResponse("/connect?error=User+not+found", status_code=303)
+def callback(
+    provider: Provider,
+    code: str,
+    state: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
 
     # Helper to get status
     conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
@@ -104,10 +104,12 @@ def callback(provider: Provider, code: str, state: str, request: Request, sessio
         })
 
 @router.post("/auth/ytm")
-def auth_ytm(request: Request, headers: str = Form(...), session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def auth_ytm(
+    request: Request,
+    headers: str = Form(...),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
 
     valid, msg = ytm.validate_headers(headers)
     if not valid:

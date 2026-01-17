@@ -1,9 +1,8 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from sqlmodel import Session, select
-from database import init_db, engine
-from models import User
+from database import init_db
 from routers import auth, dashboard, playlists, imports
+from tenant import attach_tenant
 
 app = FastAPI(title="SpotiTransFair")
 
@@ -16,12 +15,10 @@ app.include_router(auth.router)
 app.include_router(playlists.router)
 app.include_router(imports.router)
 
+@app.middleware("http")
+async def tenant_middleware(request, call_next):
+    return await attach_tenant(request, call_next)
+
 @app.on_event("startup")
 def on_startup():
     init_db()
-    with Session(engine) as session:
-        user = session.exec(select(User).where(User.username == "admin")).first()
-        if not user:
-            user = User(username="admin")
-            session.add(user)
-            session.commit()

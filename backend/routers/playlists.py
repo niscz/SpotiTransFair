@@ -9,6 +9,7 @@ from rq import Queue
 import redis
 import os
 from worker import process_import_job
+from tenant import get_current_user
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -19,10 +20,11 @@ redis_conn = redis.from_url(redis_url)
 q = Queue(connection=redis_conn)
 
 @router.get("/playlists")
-def playlists_page(request: Request, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+def playlists_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.SPOTIFY)).first()
 
     playlists = []
@@ -67,12 +69,9 @@ def create_import(
     request: Request,
     playlist_ids: str = Form(...), # Comma separated
     target_provider: str = Form(...),
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    user = session.exec(select(User).where(User.username == "admin")).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     # Check connection
     try:
         target_enum = Provider(target_provider)
