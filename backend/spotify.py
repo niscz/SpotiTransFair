@@ -115,9 +115,12 @@ class SpotifyClient:
                 resp = self._http.request(method, url, headers=headers, **kwargs, timeout=10)
 
             resp.raise_for_status()
-            if resp.content:
+            if not resp.content:
+                return None
+            try:
                 return resp.json()
-            return None
+            except ValueError as e:
+                raise SpotifyError(f"Invalid JSON response from Spotify API: {e}") from e
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code if e.response is not None else None
             if status == 404:
