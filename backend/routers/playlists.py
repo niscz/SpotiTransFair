@@ -21,6 +21,8 @@ q = Queue(connection=redis_conn)
 @router.get("/playlists")
 def playlists_page(request: Request, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.username == "admin")).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.SPOTIFY)).first()
 
     playlists = []
@@ -59,9 +61,14 @@ def create_import(
     session: Session = Depends(get_session)
 ):
     user = session.exec(select(User).where(User.username == "admin")).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     # Check connection
-    target_enum = Provider(target_provider)
+    try:
+        target_enum = Provider(target_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid target provider") from exc
     conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == target_enum)).first()
     if not conn:
         # In real app render with error

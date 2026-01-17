@@ -1,13 +1,10 @@
 import os
-import redis
 import logging
 import tempfile
+
+import redis
 import ytmusicapi
 from rq import Worker, Queue
-# RQ < 1.0 used Connection, check version or use use_connection context if available
-# Actually standard rq worker usage:
-from rq import Worker, Queue
-from redis import Redis
 from sqlmodel import Session, select
 from database import engine
 from models import ImportJob, ImportItem, JobStatus, ItemStatus, Provider, Connection as DBConnection
@@ -71,15 +68,15 @@ def finalize_import_job(job_id: int):
                     # We'll use basic ytmusic.create_playlist
                     res = ytmusic.create_playlist(title=name, description="Migrated with SpotiTransFair")
                     if isinstance(res, dict):
-                         target_playlist_id = res.get("playlistId") or res.get("id")
+                        target_playlist_id = res.get("playlistId") or res.get("id")
                     else:
-                         target_playlist_id = str(res)
+                        target_playlist_id = str(res)
 
                     # Add tracks
                     _add_tracks_resilient(ytmusic, target_playlist_id, track_ids)
 
                 finally:
-                     if temp_path and os.path.exists(temp_path):
+                    if temp_path and os.path.exists(temp_path):
                         try:
                             os.unlink(temp_path)
                         except OSError:
@@ -156,7 +153,7 @@ def process_import_job(job_id: int):
             elif job.target_provider == Provider.YTM:
                 ytm_conn = session.exec(select(DBConnection).where(DBConnection.user_id == job.user_id, DBConnection.provider == Provider.YTM)).first()
                 if not ytm_conn:
-                     raise Exception("YTM connection not found")
+                    raise Exception("YTM connection not found")
 
                 creds = ytm_conn.credentials
                 if isinstance(creds, dict) and "raw" in creds:

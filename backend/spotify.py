@@ -66,7 +66,7 @@ class SpotifyClient:
     def _refresh_access_token(self) -> None:
         """Refresh the access token using the refresh token."""
         if not self.refresh_token:
-             # If we don't have a refresh token, we might be in CC flow, try that again
+            # If we don't have a refresh token, we might be in CC flow, try that again
             if self.client_id and self.client_secret:
                 self._authenticate_client_credentials()
                 return

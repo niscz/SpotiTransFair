@@ -18,6 +18,8 @@ serializer = URLSafeSerializer(SECRET_KEY)
 @router.get("/connect")
 def connect_page(request: Request, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.username == "admin")).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
     conn_map = {c.provider: True for c in conns}
 
@@ -46,6 +48,8 @@ def login(provider: Provider):
 @router.get("/callback/{provider}")
 def callback(provider: Provider, code: str, state: str, request: Request, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.username == "admin")).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     # Verify state
     cookie_state = request.cookies.get("oauth_state")
@@ -55,7 +59,7 @@ def callback(provider: Provider, code: str, state: str, request: Request, sessio
     try:
         original_state = serializer.loads(cookie_state)
         if not secrets.compare_digest(original_state, state):
-             raise HTTPException(status_code=400, detail="State mismatch")
+            raise HTTPException(status_code=400, detail="State mismatch")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid state")
 
@@ -87,6 +91,8 @@ def callback(provider: Provider, code: str, state: str, request: Request, sessio
 @router.post("/auth/ytm")
 def auth_ytm(request: Request, headers: str = Form(...), session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.username == "admin")).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     valid, msg = ytm.validate_headers(headers)
     if not valid:
