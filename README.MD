@@ -4,7 +4,7 @@
 [![License: GNU GPLv3](https://img.shields.io/badge/License-GNU_GPLv3-yellow.svg?style=for-the-badge)](https://www.gnu.org/licenses/)
 [![GitHub stars](https://img.shields.io/github/stars/niscz/SpotiTransFair?style=for-the-badge&logo=github&label=Star%20on%20GitHub)](https://github.com/niscz/SpotiTransFair)
 
-Transfer your Spotify playlists to YouTube Music with a secure, high-performance, and self-hostable application.
+Transfer your Spotify playlists to YouTube Music or TIDAL with a secure, high-performance, and self-hostable application that includes an operational dashboard with interactive analytics.
 
 ![SpotiTransFair Screenshot 1](./githubcontent/screenshot.png)
 _The homepage of the application._
@@ -14,21 +14,20 @@ _The main interface for creating a playlist._
 
 ## 🚀 Key Features
 
-- **Seamless Playlist Transfer**: Convert any public Spotify playlist to a new **or existing** YouTube Music playlist.
+- **Seamless Playlist Transfer**: Convert any public Spotify playlist to a new **or existing** YouTube Music or TIDAL playlist.
 - **Fast & Efficient**: Parallelized track searches with a **configurable threadpool** and **global rate limiter** to stay within API limits.
 - **Private & Secure by Design**:
   - Playlists can be **PRIVATE** (default), **UNLISTED**, or **PUBLIC**.
   - Your YouTube Music auth headers are processed **in-memory** per request and never persisted to disk.
 - **Region-Aware Market Selection**: The UI proposes a market based on your **browser language** (no IP calls). You can override at any time.
 - **Detailed Reporting**: Missed tracks and duplicates report. Retry dialog with **filter (Songs/Videos/Uploads)** and **Top-5 suggestions** to add directly.
+- **Interactive Ops Dashboard**: Animated charts for status mix, daily import volume, provider share, and match quality, plus searchable tables for recent imports.
 - **Dockerized for Easy Deployment**: One command to bring up the entire stack (Frontend + Backend, Nginx reverse proxy).
-- **Modern & Robust Tech Stack**: React & TypeScript served by Nginx (non-root), Python & Flask with Gunicorn + Uvicorn workers, resilient batching and retries.
+- **Modern & Robust Tech Stack**: Tabler UI templates on FastAPI, with resilient batching and retries.
 
 ## 🌱 Project Evolution: From Concept to Production-Ready
 
-This project is a heavily refactored, secured, and dockerized version of the original concept from the [SpotTransfer](https://github.com/Pushan2005/SpotTransfer) repository by **[Pushan2005](https://github.com/Pushan2005)**.
-
-The goal was to take this great idea and re-engineer it into a robust, scalable, and secure application that follows modern DevOps and software engineering best practices.
+This project has been refactored, secured, and dockerized into a robust, scalable, and self-hostable application that follows modern DevOps and software engineering best practices.
 
 ### Key Improvements Made
 
@@ -97,9 +96,9 @@ docker-compose up --build
 
 Once the containers are running, open your web browser and navigate to:
 
--   **➡️ `http://localhost:5173`**
+-   **➡️ `http://localhost:8001`**
 
--   Backend API: proxied under /api
+-   Backend API: available at `/api`
 
 ## 📖 How to Use the App
 
@@ -112,7 +111,7 @@ Once the containers are running, open your web browser and navigate to:
     -   **Privacy**: Sets the visibility of the new YouTube Music playlist (**PRIVATE** by default).
     -   **Update existing** (optional): paste a YouTube Music playlist URL/ID to append only missing tracks.
 5.  **Connect & Clone**: Click "Connect" to check the backend status, then "Clone Playlist" to start.
-6.  **Done!**: A dialog will show the results, including any tracks that couldn't be found.
+6.  **Done!**: A dialog will show the results, including any tracks that couldn't be found. The dashboard provides interactive charts and searchable tables for operational insights (YouTube Music and TIDAL supported).
 7.  **Retry**: For missed tracks, use the dialog to adjust query, change filter (Songs/Videos/Uploads), see Top-5 suggestions, and add directly to the created/selected playlist.
 
 ## ⚙️ API for Self-Hosters
@@ -165,6 +164,7 @@ Once the containers are running, open your web browser and navigate to:
 | `YTM_POST_CREATE_SLEEP`  | `1.0`                   | Delay after playlist creation before inserts |
 | `YTM_SEARCH_WORKERS`     | `8`                     | Threadpool size for parallel search          |
 | `YTM_QPS`                | `5`                     | Global token-bucket QPS per process          |
+| `TIDAL_COUNTRY_CODE`     | `US`                    | Country code for TIDAL API requests          |
 | `STATS_FILE`             | `/data/stats.json`      | Persisted counters                           |
 | `WEB_CONCURRENCY`        | `3`                     | Gunicorn workers (backend)                   |
 | `FRONTEND_URL`           | `http://localhost:5173` | CORS origin (dev only)                       |
@@ -188,23 +188,15 @@ Optional:
     python -m venv .venv && source .venv/bin/activate
     pip install -r requirements.txt
     export WEB_CONCURRENCY=1
-    gunicorn --config config/gunicorn.conf.py main:app
+    python -m uvicorn main:app --host 0.0.0.0 --port 8001
     ```
 
-2.  Frontend:
-    ```bash
-    cd frontend
-    pnpm install
-    pnpm dev
-    ```
-
-Vite proxies `/api` to the backend via Nginx in Docker or to your **local** backend.
-If you run the backend locally, adjust `vite.config.ts` as needed.
+2.  Frontend: The UI is served directly by the FastAPI backend (Jinja2 templates + Tabler assets), so no separate frontend dev server is required.
 
 ## 📄 License
 
-This project is licensed under the **GNU General Public License v3.0**. As a derivative work of the original [SpotTransfer project](https://github.com/Pushan2005/SpotTransfer), it inherits the GPL-3.0 license. See the [LICENSE](LICENSE) file for the full license text.
+This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for the full license text.
 
 ## 🙏 Acknowledgments
 
--   A big thank you to **[Pushan2005](https://github.com/Pushan2005)** for creating the [original SpotTransfer project](https://github.com/Pushan2005/SpotTransfer) that inspired this enhanced version.
+-   Thanks to the open-source community for the libraries and tooling used in this project.
