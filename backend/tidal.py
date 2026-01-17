@@ -1,8 +1,10 @@
 """TIDAL Web API client."""
 from __future__ import annotations
+
+import os
+from typing import List, Dict, Any
+
 import requests
-from typing import List, Dict, Any, Optional
-import logging
 
 class TidalError(Exception):
     pass
@@ -10,11 +12,15 @@ class TidalError(Exception):
 class TidalClient:
     API_BASE_URL = "https://api.tidal.com/v1"
 
-    def __init__(self, access_token: str):
+    def __init__(self, access_token: str, country_code: str | None = None):
         self.access_token = access_token
+        self.country_code = country_code or os.getenv("TIDAL_COUNTRY_CODE", "US")
         self._session = requests.Session()
 
     def _request(self, method: str, endpoint: str, params: dict = None, data: dict = None) -> Any:
+        params = params or {}
+        if self.country_code and "countryCode" not in params:
+            params["countryCode"] = self.country_code
         url = f"{self.API_BASE_URL}{endpoint}"
         headers = {
             "Authorization": f"Bearer {self.access_token}"

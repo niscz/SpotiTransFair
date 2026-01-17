@@ -22,14 +22,101 @@
 </div>
 <div class="page-body">
   <div class="container-xl">
-    <div class="row row-deck row-cards">
-       <!-- Chart -->
-       <div class="col-12">
-          <div class="card">
-             <div class="card-body">
-                <div id="chart-jobs" style="min-height: 240px;"></div>
-             </div>
+    <div class="row row-cards mb-4">
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-primary text-white avatar"><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-playlist" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 17m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M17 17v-13h4" /><path d="M13 5h-10" /><path d="M3 9l10 0" /><path d="M9 13h-6" /></svg></span>
+              <div class="ms-3">
+                <div class="text-secondary">Total Imports</div>
+                <div class="h1 mb-0">{{ total_jobs }}</div>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-success text-white avatar"><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-circle-check" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M9 12l2 2l4 -4" /></svg></span>
+              <div class="ms-3">
+                <div class="text-secondary">Success Rate</div>
+                <div class="h1 mb-0">{{ success_rate }}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-warning text-white avatar"><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 7v5l3 3" /><path d="M12 3a9 9 0 1 0 9 9" /></svg></span>
+              <div class="ms-3">
+                <div class="text-secondary">In Review</div>
+                <div class="h1 mb-0">{{ waiting_jobs }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card card-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <span class="bg-info text-white avatar"><svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-playlist-add" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 5h-10" /><path d="M3 9h10" /><path d="M9 13h-6" /><path d="M15 15v6" /><path d="M18 18h-6" /><path d="M19 5h.01" /><path d="M19 9h.01" /></svg></span>
+              <div class="ms-3">
+                <div class="text-secondary">Matched Tracks</div>
+                <div class="h1 mb-0">{{ matched_items }} / {{ total_items }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row row-deck row-cards">
+       <!-- Charts -->
+       <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Import Status Mix</h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-jobs" style="min-height: 260px;"></div>
+          </div>
+        </div>
+       </div>
+       <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Imports by Day</h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-volume" style="min-height: 260px;"></div>
+          </div>
+        </div>
+       </div>
+       <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Target Providers</h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-providers" style="min-height: 260px;"></div>
+          </div>
+        </div>
+       </div>
+       <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Item Match Quality</h3>
+          </div>
+          <div class="card-body">
+            <div id="chart-items" style="min-height: 260px;"></div>
+          </div>
+        </div>
        </div>
 
        <!-- Table -->
@@ -37,9 +124,12 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Recent Imports</h3>
+            <div class="ms-auto w-50">
+              <input id="imports-search" class="form-control form-control-sm" placeholder="Search imports (playlist, status, provider)" aria-label="Search imports">
+            </div>
           </div>
           <div class="table-responsive">
-            <table class="table card-table table-vcenter text-nowrap datatable">
+            <table class="table card-table table-vcenter text-nowrap datatable" id="imports-table">
               <thead>
                 <tr>
                   <th>Source</th>
@@ -49,26 +139,27 @@
                   <th></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody class="list">
                 {% if not jobs %}
                 <tr><td colspan="5" class="text-center p-3">No jobs found.</td></tr>
                 {% endif %}
                 {% for job in jobs %}
                 <tr>
-                  <td>{{ job.source_playlist_name or job.source_playlist_id }}</td>
-                  <td class="text-uppercase">{{ job.target_provider }}</td>
-                  <td class="text-secondary">{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                  <td>
-                    {% if job.status == 'done' %}
+                  {% set status_value = job.status.value if job.status.value is defined else job.status %}
+                  <td class="import-source">{{ job.source_playlist_name or job.source_playlist_id }}</td>
+                  <td class="import-target text-uppercase">{{ job.target_provider.value if job.target_provider.value is defined else job.target_provider }}</td>
+                  <td class="import-created text-secondary">{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                  <td class="import-status">
+                    {% if status_value == 'done' %}
                       <span class="badge bg-success me-1"></span> Done
-                    {% elif job.status == 'failed' %}
+                    {% elif status_value == 'failed' %}
                       <span class="badge bg-danger me-1"></span> Failed
-                    {% elif job.status == 'running' or job.status == 'importing' %}
-                      <span class="badge bg-primary me-1"></span> {{ job.status|capitalize }}
-                    {% elif job.status == 'waiting_review' %}
+                    {% elif status_value == 'running' or status_value == 'importing' %}
+                      <span class="badge bg-primary me-1"></span> {{ status_value|replace('_', ' ')|capitalize }}
+                    {% elif status_value == 'waiting_review' %}
                       <span class="badge bg-warning me-1"></span> Waiting Review
                     {% else %}
-                       <span class="badge bg-secondary me-1"></span> {{ job.status|capitalize }}
+                       <span class="badge bg-secondary me-1"></span> {{ status_value|replace('_', ' ')|capitalize }}
                     {% endif %}
                   </td>
                   <td class="text-end">
@@ -89,21 +180,78 @@
 {% block scripts %}
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-      var options = {
+      var statusOptions = {
           series: {{ chart_series|safe }},
           chart: {
               type: 'donut',
-              height: 240,
+              height: 260,
               fontFamily: 'inherit',
+              animations: { enabled: true, easing: 'easeinout', speed: 600 }
           },
           labels: {{ chart_labels|safe }},
-          colors: [tabler.getColor("success"), tabler.getColor("danger"), tabler.getColor("secondary")],
-          legend: {
-              position: 'bottom'
-          }
+          colors: [tabler.getColor("success"), tabler.getColor("danger"), tabler.getColor("warning"), tabler.getColor("primary"), tabler.getColor("secondary")],
+          legend: { position: 'bottom' }
       };
-      var chart = new ApexCharts(document.querySelector("#chart-jobs"), options);
-      chart.render();
+      new ApexCharts(document.querySelector("#chart-jobs"), statusOptions).render();
+
+      var volumeOptions = {
+          series: [{
+              name: 'Imports',
+              data: {{ day_values|safe }}
+          }],
+          chart: {
+              type: 'area',
+              height: 260,
+              fontFamily: 'inherit',
+              toolbar: { show: false },
+              animations: { enabled: true, easing: 'easeinout', speed: 700 }
+          },
+          dataLabels: { enabled: false },
+          stroke: { curve: 'smooth', width: 2 },
+          fill: { type: 'gradient', gradient: { shadeIntensity: 0.3, opacityFrom: 0.4, opacityTo: 0.05 } },
+          xaxis: { categories: {{ day_labels|safe }} },
+          colors: [tabler.getColor("primary")]
+      };
+      new ApexCharts(document.querySelector("#chart-volume"), volumeOptions).render();
+
+      var providerOptions = {
+          series: {{ provider_series|safe }},
+          chart: { type: 'pie', height: 260, fontFamily: 'inherit', animations: { enabled: true, speed: 600 } },
+          labels: {{ provider_labels|safe }},
+          colors: [tabler.getColor("success"), tabler.getColor("indigo"), tabler.getColor("red")],
+          legend: { position: 'bottom' }
+      };
+      new ApexCharts(document.querySelector("#chart-providers"), providerOptions).render();
+
+      var itemOptions = {
+          series: [{ data: {{ item_series|safe }} }],
+          chart: {
+              type: 'bar',
+              height: 260,
+              fontFamily: 'inherit',
+              toolbar: { show: false },
+              animations: { enabled: true, easing: 'easeinout', speed: 700 }
+          },
+          plotOptions: { bar: { horizontal: true, barHeight: '60%' } },
+          dataLabels: { enabled: false },
+          xaxis: { categories: {{ item_labels|safe }} },
+          colors: [tabler.getColor("azure")]
+      };
+      new ApexCharts(document.querySelector("#chart-items"), itemOptions).render();
+
+      var tableElement = document.getElementById('imports-table');
+      if (tableElement) {
+        var tableList = new List(tableElement.closest('.card'), {
+          listClass: 'list',
+          valueNames: ['import-source', 'import-target', 'import-created', 'import-status']
+        });
+        var searchInput = document.getElementById('imports-search');
+        if (searchInput) {
+          searchInput.addEventListener('keyup', function () {
+            tableList.search(searchInput.value);
+          });
+        }
+      }
   });
 </script>
 {% endblock %}
