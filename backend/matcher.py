@@ -71,7 +71,13 @@ def calculate_score(source: Dict[str, Any], target: Dict[str, Any]) -> float:
 
     # 3. Duration Match
     # Spotify duration is ms
-    src_dur = _duration_to_ms(source.get("duration_ms"))
+    src_dur_raw = source.get("duration_ms")
+    if isinstance(src_dur_raw, (int, float)):
+        src_dur = int(src_dur_raw)
+    elif isinstance(src_dur_raw, str) and src_dur_raw.strip().isdigit():
+        src_dur = int(src_dur_raw.strip())
+    else:
+        src_dur = _duration_to_ms(src_dur_raw)
     tgt_dur = _duration_to_ms(target.get("duration"))
 
     duration_score = 1.0

@@ -167,6 +167,8 @@ def search_track(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ) -> Response:
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Search query cannot be empty")
     job = session.get(ImportJob, id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
@@ -187,10 +189,15 @@ def search_track(
              raise HTTPException(status_code=400, detail="Not connected to YouTube Music")
 
         creds = conn.credentials
-        if isinstance(creds, dict) and "raw" in creds:
-             headers_raw = creds["raw"]
-        else:
-             headers_raw = _headers_to_raw(creds)
+        try:
+            if isinstance(creds, dict) and "raw" in creds:
+                headers_raw = creds["raw"]
+            else:
+                headers_raw = _headers_to_raw(creds)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid YouTube Music authentication headers") from exc
+        if not headers_raw:
+            raise HTTPException(status_code=400, detail="YouTube Music authentication headers missing")
 
         raw_results = ytm.search_tracks(query, headers_raw, filt="songs", top_k=10)
 
@@ -216,7 +223,12 @@ def submit_review(
     job = session.get(ImportJob, id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
-    decision_list = json.loads(decisions) # list of {item_id, decision, match_id?, match_data?}
+    try:
+        decision_list = json.loads(decisions)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid review payload") from exc
+    if not isinstance(decision_list, list):
+        raise HTTPException(status_code=400, detail="Review payload must be a list")
 
     for d in decision_list:
         item = session.get(ImportItem, d["item_id"])
