@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
@@ -6,9 +6,14 @@ from database import get_session
 from models import User, Connection, Provider
 from auth import get_spotify_auth_url, get_tidal_auth_url, exchange_spotify_code, exchange_tidal_code
 import ytm
+import secrets
+from itsdangerous import URLSafeSerializer
+import os
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-secure-random-string")
+serializer = URLSafeSerializer(SECRET_KEY)
 
 @router.get("/connect")
 def connect_page(request: Request, session: Session = Depends(get_session)):
@@ -25,17 +30,34 @@ def connect_page(request: Request, session: Session = Depends(get_session)):
 
 @router.get("/auth/{provider}/login")
 def login(provider: Provider):
-    state = "state_123"
+    state = secrets.token_urlsafe(16)
     url = "/"
     if provider == Provider.SPOTIFY:
         url = get_spotify_auth_url(state)
     elif provider == Provider.TIDAL:
         url = get_tidal_auth_url(state)
-    return RedirectResponse(url)
+
+    response = RedirectResponse(url)
+    # Sign the state to verify it later
+    signed_state = serializer.dumps(state)
+    response.set_cookie(key="oauth_state", value=signed_state, httponly=True, max_age=600)
+    return response
 
 @router.get("/callback/{provider}")
-def callback(provider: Provider, code: str, request: Request, session: Session = Depends(get_session)):
+def callback(provider: Provider, code: str, state: str, request: Request, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.username == "admin")).first()
+
+    # Verify state
+    cookie_state = request.cookies.get("oauth_state")
+    if not cookie_state:
+        raise HTTPException(status_code=400, detail="State cookie missing")
+
+    try:
+        original_state = serializer.loads(cookie_state)
+        if not secrets.compare_digest(original_state, state):
+             raise HTTPException(status_code=400, detail="State mismatch")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid state")
 
     try:
         tokens = {}
@@ -57,7 +79,7 @@ def callback(provider: Provider, code: str, request: Request, session: Session =
         return templates.TemplateResponse("connect.html", {
             "request": request,
             "error": str(e),
-            "spotify_connected": False, # Simplified, implies reload
+            "spotify_connected": False, # Simplified
             "tidal_connected": False,
             "ytm_connected": False
         })
@@ -68,7 +90,6 @@ def auth_ytm(request: Request, headers: str = Form(...), session: Session = Depe
 
     valid, msg = ytm.validate_headers(headers)
     if not valid:
-         # In a real app we'd flash message, here simple return
         return RedirectResponse("/connect?error=" + msg, status_code=303)
 
     conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.YTM)).first()

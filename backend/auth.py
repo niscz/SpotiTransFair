@@ -10,11 +10,11 @@ load_dotenv()
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
 # Defaults if not set, though they should be set
-SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:3000/callback/spotify")
+SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8001/callback/spotify")
 
 TIDAL_CLIENT_ID = os.getenv("TIDAL_CLIENT_ID")
 TIDAL_CLIENT_SECRET = os.getenv("TIDAL_CLIENT_SECRET")
-TIDAL_REDIRECT_URI = os.getenv("TIDAL_REDIRECT_URI", "http://localhost:3000/callback/tidal")
+TIDAL_REDIRECT_URI = os.getenv("TIDAL_REDIRECT_URI", "http://localhost:8001/callback/tidal")
 
 def get_spotify_auth_url(state: str) -> str:
     params = {
