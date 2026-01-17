@@ -27,6 +27,44 @@ def import_detail(id: int, request: Request, session: Session = Depends(get_sess
     matched = len([i for i in job.items if i.status == ItemStatus.MATCHED])
     uncertain = len([i for i in job.items if i.status == ItemStatus.UNCERTAIN])
     failed = len([i for i in job.items if i.status == ItemStatus.NOT_FOUND])
+    skipped = len([i for i in job.items if i.status == ItemStatus.SKIPPED])
+
+    status_series = [matched, uncertain, failed, skipped]
+    status_labels = ["Matched", "Uncertain", "Not found", "Skipped"]
+
+    artist_counts = {}
+    for item in job.items:
+        artists = item.original_track_data.get("artists", []) if item.original_track_data else []
+        for artist in artists:
+            artist_name = artist.strip()
+            if artist_name:
+                artist_counts[artist_name] = artist_counts.get(artist_name, 0) + 1
+
+    top_artists = sorted(artist_counts.items(), key=lambda x: x[1], reverse=True)[:6]
+    top_artist_labels = [name for name, _ in top_artists]
+    top_artist_values = [count for _, count in top_artists]
+
+    score_bins = {
+        "0-49%": 0,
+        "50-74%": 0,
+        "75-89%": 0,
+        "90-100%": 0,
+    }
+    for item in job.items:
+        if not item.match_data:
+            continue
+        score = item.match_data.get("_score")
+        if score is None:
+            continue
+        score_percent = max(0, min(100, round(score * 100)))
+        if score_percent < 50:
+            score_bins["0-49%"] += 1
+        elif score_percent < 75:
+            score_bins["50-74%"] += 1
+        elif score_percent < 90:
+            score_bins["75-89%"] += 1
+        else:
+            score_bins["90-100%"] += 1
 
     return templates.TemplateResponse("import_detail.html", {
         "request": request,
@@ -35,8 +73,15 @@ def import_detail(id: int, request: Request, session: Session = Depends(get_sess
             "total": total,
             "matched": matched,
             "uncertain": uncertain,
-            "failed": failed
-        }
+            "failed": failed,
+            "skipped": skipped,
+        },
+        "status_series": json.dumps(status_series),
+        "status_labels": json.dumps(status_labels),
+        "top_artist_labels": json.dumps(top_artist_labels),
+        "top_artist_values": json.dumps(top_artist_values),
+        "score_labels": json.dumps(list(score_bins.keys())),
+        "score_values": json.dumps(list(score_bins.values())),
     })
 
 @router.get("/imports/{id}/review")
