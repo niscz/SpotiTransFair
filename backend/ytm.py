@@ -245,7 +245,7 @@ def get_video_ids(ytmusic: ytmusicapi.YTMusic, tracks: List[dict]) -> Tuple[List
             "Not a single track could be found on YouTube Music. "
             "Are your authentication headers correct and valid?"
         )
-    return [v for v in video_ids if v is not None], missed_tracks
+    return video_ids, missed_tracks
 
 
 def t_label(t: Dict[str, Any]) -> str:
@@ -348,6 +348,8 @@ def create_ytm_playlist(
         dup_labels: List[str] = []
         label_by_id: Dict[str, str] = {}
         for vid, lab in zip(video_ids, labels):
+            if not vid:
+                continue
             if vid in seen:
                 dup_labels.append(lab)
                 continue

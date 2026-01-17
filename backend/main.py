@@ -1,421 +1,248 @@
-"""SpotiTransFair backend Flask application.
-
-This module exposes HTTP endpoints for:
-- validating YouTube Music auth headers,
-- previewing Spotify playlists,
-- creating/updating YT Music playlists from Spotify,
-- lightweight search/add helpers for YT Music,
-- basic aggregate stats persisted on disk.
-
-All user-facing strings are kept concise. Internal comments/docstrings are in English.
-"""
-
-from __future__ import annotations
-
-import json
-import logging
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import Session, select
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
 import os
-import pathlib
-import fcntl
-import ipaddress
-from typing import Any, Dict, Union, cast
-from geoip2.database import Reader as GeoIPReader
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from dotenv import load_dotenv
-from asgiref.wsgi import WsgiToAsgi
+import redis
+from rq import Queue
 
-from ytm import (
-    create_ytm_playlist,
-    validate_headers,
-    YTMError,
-    search_tracks,
-    add_single_video_to_playlist,
-)
-from spotify import get_all_tracks, get_playlist_name, SpotifyError
+from database import init_db, get_session, engine
+from models import User, Connection, ImportJob, ImportItem, Provider, JobStatus, ItemStatus
+from auth import get_spotify_auth_url, get_tidal_auth_url, exchange_spotify_code, exchange_tidal_code
+from worker import process_import_job, finalize_import_job
+from spotify import SpotifyClient
+import ytm
 
-load_dotenv()
+app = FastAPI(title="SpotiTransFair")
 
-wsgi_app = Flask(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-CORS(
-    wsgi_app,
-    resources={
-        r"/*": {
-            "origins": [os.getenv("FRONTEND_URL", "http://localhost:5173")],
-            "methods": ["POST", "GET", "OPTIONS"],
-        }
-    },
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-DEFAULT_MARKET = os.getenv("DEFAULT_SPOTIFY_MARKET", "US")
-GEOIP_DB = os.getenv("GEOIP_DB")
-STATS_FILE = os.getenv("STATS_FILE", "/data/stats.json")
-pathlib.Path(STATS_FILE).parent.mkdir(parents=True, exist_ok=True)
+# Redis Queue
+redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+redis_conn = redis.from_url(redis_url)
+q = Queue(connection=redis_conn)
 
+@app.on_event("startup")
+def on_startup():
+    init_db()
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.username == "admin")).first()
+        if not user:
+            user = User(username="admin")
+            session.add(user)
+            session.commit()
 
-def _json() -> Dict[str, Any]:
-    """Return JSON body or an empty dict if parsing fails."""
-    return request.get_json(silent=True) or {}
+# --- Auth ---
 
-
-def _ok(payload: Dict[str, Any], status: int = 200):
-    """Return a JSON success response."""
-    return jsonify(payload), status
-
-
-def _error(code: str, message: str, status: int):
-    """Return a JSON error envelope compatible with the UI."""
-    return jsonify({"error": {"code": code, "message": message}}), status
-
-
-def _stats_read() -> Dict[str, int]:
-    """Read aggregate stats, handling first-run and partial file content gracefully."""
-    try:
-        with open(STATS_FILE, "a+", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_SH)
-            f.seek(0)
-            try:
-                data = json.load(f)
-            except json.JSONDecodeError:
-                data = {}
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-        return {
-            "playlists": int(data.get("playlists", 0)),
-            "songs": int(data.get("songs", 0)),
-        }
-    except FileNotFoundError:
-        return {"playlists": 0, "songs": 0}
-
-
-def _stats_bump(add_playlists: int = 0, add_songs: int = 0) -> Dict[str, int]:
-    """Atomically bump aggregate stats with file locking."""
-    with open(STATS_FILE, "a+", encoding="utf-8") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        f.seek(0)
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            data = {}
-        data["playlists"] = int(data.get("playlists", 0)) + int(add_playlists)
-        data["songs"] = int(data.get("songs", 0)) + int(add_songs)
-        f.seek(0)
-        f.truncate()
-        json.dump(data, f)
-        f.flush()
-        fcntl.flock(f, fcntl.LOCK_UN)
-    return {"playlists": int(data["playlists"]), "songs": int(data["songs"])}
-
-def _client_ip() -> str:
-    """Ermittle die (wahrscheinlich) echte Client-IP unter Berücksichtigung von Proxy-Headern."""
-
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-
-        ip = [p.strip() for p in xff.split(",") if p.strip()][0]
+@app.get("/auth/{provider}/login")
+def login(provider: Provider):
+    state = "state_123"
+    if provider == Provider.SPOTIFY:
+        return {"url": get_spotify_auth_url(state)}
+    elif provider == Provider.TIDAL:
+        return {"url": get_tidal_auth_url(state)}
     else:
-        ip = request.headers.get("X-Real-IP", request.remote_addr or "")
+        raise HTTPException(status_code=400, detail="Invalid provider for OAuth")
+
+class AuthCallback(BaseModel):
+    code: str
+    state: Optional[str] = None
+
+@app.post("/auth/{provider}/callback")
+def callback(provider: Provider, data: AuthCallback, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.username == "admin")).first()
+
+    if provider == Provider.SPOTIFY:
+        tokens = exchange_spotify_code(data.code)
+        conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.SPOTIFY)).first()
+        if not conn:
+            conn = Connection(user_id=user.id, provider=Provider.SPOTIFY, credentials=tokens)
+        else:
+            conn.credentials = tokens
+        session.add(conn)
+        session.commit()
+        return {"status": "ok"}
+
+    elif provider == Provider.TIDAL:
+        tokens = exchange_tidal_code(data.code)
+        conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.TIDAL)).first()
+        if not conn:
+            conn = Connection(user_id=user.id, provider=Provider.TIDAL, credentials=tokens)
+        else:
+            conn.credentials = tokens
+        session.add(conn)
+        session.commit()
+        return {"status": "ok"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid provider")
+
+class YTMAuth(BaseModel):
+    headers: str
+
+@app.post("/auth/ytm")
+def auth_ytm(data: YTMAuth, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.username == "admin")).first()
+
+    valid, msg = ytm.validate_headers(data.headers)
+    if not valid:
+        raise HTTPException(status_code=400, detail=msg)
+
+    conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.YTM)).first()
+    creds = {"raw": data.headers}
+    if not conn:
+        conn = Connection(user_id=user.id, provider=Provider.YTM, credentials=creds)
+    else:
+        conn.credentials = creds
+    session.add(conn)
+    session.commit()
+    return {"status": "ok"}
+
+@app.get("/user/connections")
+def get_connections(session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.username == "admin")).first()
+    conns = session.exec(select(Connection).where(Connection.user_id == user.id)).all()
+    return {c.provider: True for c in conns}
+
+# --- Playlists ---
+
+@app.get("/playlists")
+def get_playlists(session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.username == "admin")).first()
+    conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.SPOTIFY)).first()
+
+    if not conn:
+        raise HTTPException(status_code=401, detail="Spotify not connected")
+
+    client = SpotifyClient(access_token=conn.credentials.get("access_token"), refresh_token=conn.credentials.get("refresh_token"))
 
     try:
-        ip_obj = ipaddress.ip_address(ip)
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_reserved:
-            return ""
-    except ValueError:
-        return ""
-    return ip
+        data = client.get_user_playlists(limit=50)
+        playlists = []
+        for item in data.get("items", []):
+            if item:
+                img = item["images"][0]["url"] if item.get("images") else None
+                playlists.append({
+                    "id": item["id"],
+                    "name": item["name"],
+                    "tracks": item["tracks"]["total"],
+                    "image": img,
+                    "url": item["external_urls"]["spotify"]
+                })
+        return playlists
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-def _guess_from_accept_language(h: str) -> str | None:
-    """
-    Nimmt den ersten Sprachbereich aus Accept-Language.
-    Wenn Region vorhanden (de-DE), nutze Region (DE).
-    Ohne Region (z.B. 'en') nutze heuristische Defaults.
-    """
-    if not h:
-        return None
-    first = h.split(",")[0].strip().lower()
-    parts = first.split(";")[0].split("-")
-    if len(parts) >= 2 and len(parts[1]) == 2:
-        return parts[1].upper()
-    lang = parts[0]
-    fallback = {
-        "en": "US",
-        "de": "DE",
-        "fr": "FR",
-        "it": "IT",
-        "es": "ES",
-        "pt": "BR",
-        "nl": "NL",
-        "sv": "SE",
-        "pl": "PL",
-        "ja": "JP",
-        "ko": "KR",
-        "tr": "TR",
-        "ru": "RU",
-        "ar": "AE",
-        "zh": "SG",
-        "cs": "CZ",
-        "da": "DK",
-        "fi": "FI",
-        "el": "GR",
-        "hu": "HU",
-        "no": "NO",
-        "ro": "RO",
-        "sk": "SK",
+# --- Imports & Review ---
+
+class CreateImportRequest(BaseModel):
+    playlist_id: str
+    target_provider: Provider
+
+@app.post("/imports")
+def create_import(data: CreateImportRequest, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.username == "admin")).first()
+
+    conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == data.target_provider)).first()
+    if not conn:
+        raise HTTPException(status_code=400, detail=f"Not connected to {data.target_provider}")
+
+    job = ImportJob(
+        user_id=user.id,
+        source_playlist_id=data.playlist_id,
+        target_provider=data.target_provider,
+        status=JobStatus.QUEUED
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    q.enqueue(process_import_job, job.id)
+    return job
+
+@app.get("/imports")
+def list_imports(session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.username == "admin")).first()
+    jobs = session.exec(select(ImportJob).where(ImportJob.user_id == user.id).order_by(ImportJob.created_at.desc())).all()
+    return jobs
+
+@app.get("/imports/{id}")
+def get_import(id: int, session: Session = Depends(get_session)):
+    job = session.get(ImportJob, id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    total = len(job.items)
+    matched = len([i for i in job.items if i.status == ItemStatus.MATCHED])
+    uncertain = len([i for i in job.items if i.status == ItemStatus.UNCERTAIN])
+    failed = len([i for i in job.items if i.status == ItemStatus.NOT_FOUND])
+
+    return {
+        "job": job,
+        "stats": {
+            "total": total,
+            "matched": matched,
+            "uncertain": uncertain,
+            "failed": failed
+        }
     }
-    return fallback.get(lang)
 
-def _guess_from_timezone(tz: str | None) -> str | None:
-    """
-    Very-light Mapping von verbreiteten IANA-Zeitzonen zur ISO-2 Country.
-    Kein perfekter Ersatz für GeoIP; bewusst klein gehalten.
-    """
-    if not tz:
-        return None
-    tz = tz.strip()
-    simple = {
+@app.get("/imports/{id}/review")
+def get_import_review(id: int, session: Session = Depends(get_session)):
+    job = session.get(ImportJob, id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
 
-        "Europe/Berlin": "DE", "Europe/Vienna": "AT", "Europe/Zurich": "CH",
-        "Europe/Paris": "FR", "Europe/Rome": "IT", "Europe/Madrid": "ES",
-        "Europe/Amsterdam": "NL", "Europe/Stockholm": "SE", "Europe/Warsaw": "PL",
-        "Europe/Dublin": "IE", "Europe/London": "GB",
+    items = [i for i in job.items if i.status == ItemStatus.UNCERTAIN]
+    return items
 
-        "America/New_York": "US", "America/Chicago": "US", "America/Denver": "US", "America/Los_Angeles": "US",
-        "America/Toronto": "CA", "America/Vancouver": "CA",
-        "America/Sao_Paulo": "BR", "America/Argentina/Buenos_Aires": "AR",
-        "America/Mexico_City": "MX", "America/Bogota": "CO", "America/Santiago": "CL",
+class ReviewDecision(BaseModel):
+    item_id: int
+    decision: str
+    match_id: Optional[str] = None
 
-        "Asia/Tokyo": "JP", "Asia/Seoul": "KR", "Asia/Kolkata": "IN",
-        "Asia/Jakarta": "ID", "Asia/Singapore": "SG", "Asia/Bangkok": "TH",
-        "Asia/Kuala_Lumpur": "MY", "Asia/Ho_Chi_Minh": "VN", "Asia/Manila": "PH",
-        "Australia/Sydney": "AU", "Pacific/Auckland": "NZ",
+class ReviewRequest(BaseModel):
+    decisions: List[ReviewDecision]
 
-        "Asia/Dubai": "AE", "Asia/Riyadh": "SA", "Africa/Johannesburg": "ZA",
-        "Europe/Istanbul": "TR",
-    }
-    return simple.get(tz)
+@app.post("/imports/{id}/review")
+def submit_review(id: int, data: ReviewRequest, session: Session = Depends(get_session)):
+    job = session.get(ImportJob, id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
 
-def _guess_from_geoip(ip: str) -> str | None:
-    """Liefert ISO-2 Country via lokaler MaxMind-DB zurück (ohne externe Anfrage)."""
-    if not (ip and GEOIP_DB and os.path.exists(GEOIP_DB)):
-        return None
-    try:
-        with GeoIPReader(GEOIP_DB) as reader:
-            resp = reader.country(ip)
-            return (resp.country.iso_code or "").upper() or None
-    except Exception:
-        return None
+    for d in data.decisions:
+        item = session.get(ImportItem, d.item_id)
+        if item and item.job_id == id:
+            if d.decision == "confirm":
+                item.status = ItemStatus.MATCHED
+                if d.match_id:
+                    item.selected_match_id = d.match_id
+                elif item.match_data:
+                    item.selected_match_id = item.match_data.get("id")
+            elif d.decision == "reject":
+                item.status = ItemStatus.NOT_FOUND
+                item.selected_match_id = None
+            session.add(item)
 
-@wsgi_app.route("/market/guess", methods=["GET"])
-def market_guess():
-    """Best-effort Market-Vorschlag (privacy-aware, offline)."""
-    tz = request.args.get("tz")
-    accept_lang = request.headers.get("Accept-Language", "")
-    ip = _client_ip()
+    session.commit()
+    return {"status": "ok"}
 
-    guesses = []
-    tz_cc = _guess_from_timezone(tz)
-    if tz_cc:
-        guesses.append({"method": "timezone", "market": tz_cc, "confidence": 0.75})
+@app.post("/imports/{id}/finalize")
+def finalize_import(id: int, session: Session = Depends(get_session)):
+    job = session.get(ImportJob, id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
 
-    al_cc = _guess_from_accept_language(accept_lang)
-    if al_cc:
-        guesses.append({"method": "accept-language", "market": al_cc, "confidence": 0.70})
+    job.status = JobStatus.IMPORTING
+    session.add(job)
+    session.commit()
 
-    gi_cc = _guess_from_geoip(ip)
-    if gi_cc:
-        guesses.insert(0, {"method": "geoip", "market": gi_cc, "confidence": 0.9})
-
-    market = (guesses[0]["market"] if guesses else DEFAULT_MARKET)
-    return _ok({"market": market, "guesses": guesses, "default": DEFAULT_MARKET})
-
-@wsgi_app.route("/", methods=["GET"])
-def home():
-    """Health endpoint."""
-    return _ok({"message": "Server Online"})
-
-
-@wsgi_app.route("/validate-headers", methods=["POST"])
-def route_validate_headers():
-    """Validate raw YT Music auth headers (string or key/value object)."""
-    data = _json()
-    headers_any: Any = data.get("auth_headers", None)
-
-    if headers_any is None:
-        return _error("BAD_REQUEST", "Field 'auth_headers' missing.", 400)
-
-    if not isinstance(headers_any, (str, dict)):
-        return _error(
-            "BAD_REQUEST",
-            "Field 'auth_headers' must be a string (raw headers) or an object map.",
-            400,
-        )
-
-    headers_raw = cast(Union[str, Dict[str, str]], headers_any)
-    ok, msg = validate_headers(headers_raw)
-    if ok:
-        return _ok({"valid": True, "message": msg})
-    return _error("YTM_AUTH_INVALID", msg, 422)
-
-
-@wsgi_app.route("/spotify/preview", methods=["GET"])
-def spotify_preview():
-    """Return playlist name and track count to allow a UI preview before cloning."""
-    playlist_link = request.args.get("playlist_link")
-    market = request.args.get("market", DEFAULT_MARKET)
-
-    if not playlist_link:
-        return _error("BAD_REQUEST", "Query param 'playlist_link' is required.", 400)
-
-    try:
-        tracks = get_all_tracks(playlist_link, market)
-        name = get_playlist_name(playlist_link)
-        return _ok({"name": name, "track_count": len(tracks)})
-    except SpotifyError as exc:
-        logging.warning("Spotify error: %s", exc)
-        return _error("SPOTIFY_ERROR", str(exc), 422)
-    except ValueError as exc:
-        logging.warning("Bad playlist link: %s", exc)
-        return _error("BAD_REQUEST", str(exc), 400)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logging.exception("Unhandled error in /spotify/preview: %s", exc)
-        return _error(
-            "INTERNAL",
-            "An internal server error occurred. Please try again later.",
-            500,
-        )
-
-
-@wsgi_app.route("/create", methods=["POST"])
-def create_playlist():
-    """Create a new or update an existing YT Music playlist based on a Spotify playlist."""
-    data = _json()
-    playlist_link = data.get("playlist_link")
-    auth_headers = data.get("auth_headers")
-    market = data.get("market", DEFAULT_MARKET)
-    privacy_status = data.get("privacy_status", "PRIVATE")
-    title_override = data.get("title_override")
-    dry_run = bool(data.get("dry_run", False))
-    target_playlist_id = data.get("target_playlist_id")
-
-    if not playlist_link or not auth_headers:
-        return _error(
-            "BAD_REQUEST",
-            "Fields 'playlist_link' and 'auth_headers' are required.",
-            400,
-        )
-
-    try:
-        playlist_id, missed = create_ytm_playlist(
-            playlist_link,
-            auth_headers,
-            market=market,
-            privacy_status=privacy_status,
-            title_override=title_override,
-            dry_run=dry_run,
-            target_playlist_id=target_playlist_id,
-        )
-
-        message = (
-            "Dry run successful."
-            if dry_run
-            else (
-                "Playlist updated successfully!"
-                if target_playlist_id
-                else "Playlist created successfully!"
-            )
-        )
-
-        resp: Dict[str, Any] = {"message": message, "missed_tracks": missed}
-
-        if not dry_run and playlist_id:
-            resp["playlist_id"] = playlist_id
-            resp["playlist_url"] = f"https://music.youtube.com/playlist?list={playlist_id}"
-
-            inserted = int((missed or {}).get("_stats", {}).get("inserted", 0))
-            # Only bump "playlists" on creation; always bump "songs" by inserted
-            if not target_playlist_id:
-                _stats_bump(add_playlists=1, add_songs=inserted)
-            else:
-                _stats_bump(add_playlists=0, add_songs=inserted)
-
-        return _ok(resp)
-
-    except SpotifyError as exc:
-        logging.warning("Spotify API error: %s", exc)
-        return _error("SPOTIFY_ERROR", str(exc), 422)
-    except YTMError as exc:
-        logging.warning("YTM error: %s", exc)
-        return _error("YTM_ERROR", str(exc), 422)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logging.exception("Unhandled error in /create: %s", exc)
-        return _error(
-            "INTERNAL",
-            "An internal server error occurred. Please try again later.",
-            500,
-        )
-
-
-@wsgi_app.route("/ytm/search", methods=["POST"])
-def ytm_search():
-    """Search YouTube Music; allows filter and top_k for UI suggestions."""
-    # Body: { "query": "...", "auth_headers": "...", "filter": "songs|videos|uploads", "top_k": 5 }
-    # Returns: { "results": [ { "videoId": "...", "title": "...", "artists": [ ... ] }, ... ] }
-    data = _json()
-    query = data.get("query")
-    auth_headers = data.get("auth_headers")
-    filt = data.get("filter", "songs")
-    top_k = int(data.get("top_k", 5))
-
-    if not query or not auth_headers:
-        return _error("BAD_REQUEST", "Fields 'query' and 'auth_headers' are required.", 400)
-
-    try:
-        # positional args to avoid keyword compatibility issues across versions
-        results = results = search_tracks(query, auth_headers, filt=filt, top_k=top_k)
-        return _ok({"results": results})
-    except YTMError as exc:
-        logging.warning("YTM error in search: %s", exc)
-        return _error("YTM_ERROR", str(exc), 422)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logging.exception("Unhandled error in /ytm/search: %s", exc)
-        return _error("INTERNAL", "An internal server error occurred.", 500)
-
-
-@wsgi_app.route("/ytm/add", methods=["POST"])
-def ytm_add():
-    """Add a single video to an existing YT Music playlist."""
-    # Body: { "playlist_id": "...", "video_id": "...", "auth_headers": "..." }
-    data = _json()
-    pid = data.get("playlist_id")
-    vid = data.get("video_id")
-    headers = data.get("auth_headers")
-
-    if not (pid and vid and headers):
-        return _error(
-            "BAD_REQUEST",
-            "Fields 'playlist_id','video_id','auth_headers' are required.",
-            400,
-        )
-    try:
-        ok = add_single_video_to_playlist(pid, vid, headers)
-        return _ok({"ok": bool(ok)})
-    except YTMError as exc:
-        logging.warning("YTM error in add: %s", exc)
-        return _error("YTM_ERROR", str(exc), 422)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logging.exception("Unhandled error in /ytm/add: %s", exc)
-        return _error("INTERNAL", "An internal server error occurred.", 500)
-
-
-@wsgi_app.route("/stats", methods=["GET"])
-def stats():
-    """Return aggregate counters."""
-    return _ok(_stats_read())
-
-
-app = WsgiToAsgi(wsgi_app)
-
-if __name__ == "__main__":
-    wsgi_app.run(port=8001)
+    q.enqueue(finalize_import_job, job.id)
+    return {"status": "importing"}
