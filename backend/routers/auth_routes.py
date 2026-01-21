@@ -8,7 +8,7 @@ from auth import get_spotify_auth_url, get_tidal_auth_url, exchange_spotify_code
 from qobuz import login_qobuz, QobuzError
 import ytm
 import secrets
-from itsdangerous import URLSafeSerializer
+from itsdangerous import URLSafeSerializer, BadSignature
 import logging
 from tenant import SECRET_KEY, get_current_user
 
@@ -75,14 +75,16 @@ def callback(
         # Verify state
         cookie_state = request.cookies.get("oauth_state")
         if not cookie_state:
-            raise Exception("State cookie missing. Please try again.")
+            raise ValueError("State cookie missing. Please try again.")
 
         try:
             original_state = serializer.loads(cookie_state)
             if not secrets.compare_digest(original_state, state):
-                raise Exception("State mismatch. Possible CSRF attack.")
-        except Exception:
-            raise Exception("Invalid state cookie.")
+                raise ValueError("State mismatch. Possible CSRF attack.")
+        except BadSignature as exc:
+            raise ValueError("Invalid state cookie.") from exc
+        except Exception as exc:
+             raise ValueError("State validation failed.") from exc
 
         tokens = {}
         if provider == Provider.SPOTIFY:
@@ -99,10 +101,18 @@ def callback(
         session.commit()
         return RedirectResponse("/connect")
 
-    except Exception as e:
+    except ValueError as e:
+        logger.warning(f"Auth callback warning: {e}")
         return templates.TemplateResponse("connect.html", {
             "request": request,
             "error": str(e),
+            **status
+        })
+    except Exception as e:
+        logger.error(f"Auth callback unexpected error: {e}", exc_info=True)
+        return templates.TemplateResponse("connect.html", {
+            "request": request,
+            "error": "An unexpected error occurred during authentication.",
             **status
         })
 

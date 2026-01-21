@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from database import init_db
-from routers import auth, dashboard, playlists, imports
+from routers import auth_routes as auth, dashboard, playlists, imports
 from tenant import attach_tenant
 
 @asynccontextmanager

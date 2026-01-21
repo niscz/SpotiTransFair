@@ -22,13 +22,13 @@ def dashboard(
     jobs = session.exec(
         select(ImportJob)
         .where(ImportJob.user_id == user.id)
-        .order_by(ImportJob.created_at.desc())
+        .order_by(ImportJob.created_at.desc()) # pylint: disable=no-member
     ).all()
 
     job_ids = [job.id for job in jobs if job.id is not None]
     items = []
     if job_ids:
-        items = session.exec(select(ImportItem).where(ImportItem.job_id.in_(job_ids))).all()
+        items = session.exec(select(ImportItem).where(ImportItem.job_id.in_(job_ids))).all() # pylint: disable=no-member
 
     def normalize_status(status_value: JobStatus | str) -> JobStatus:
         if isinstance(status_value, JobStatus):

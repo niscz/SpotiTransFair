@@ -22,14 +22,14 @@ redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_conn = redis.from_url(redis_url)
 q = Queue(connection=redis_conn)
 
-@router.get("/imports/{id}")
+@router.get("/imports/{job_id}")
 def import_detail(
-    id: int,
+    job_id: int,
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    job = session.get(ImportJob, id)
+    job = session.get(ImportJob, job_id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
 
@@ -100,14 +100,14 @@ def import_detail(
         "skipped_items": skipped_items,
     })
 
-@router.get("/imports/{id}/review")
+@router.get("/imports/{job_id}/review")
 def review_page(
-    id: int,
+    job_id: int,
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    job = session.get(ImportJob, id)
+    job = session.get(ImportJob, job_id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
     items = [i for i in job.items if i.status in (ItemStatus.UNCERTAIN, ItemStatus.NOT_FOUND)]
@@ -161,16 +161,16 @@ def review_page(
         "top_artists": top_artists,
     })
 
-@router.post("/imports/{id}/search_track")
+@router.post("/imports/{job_id}/search_track")
 def search_track(
-    id: int,
+    job_id: int,
     query: str = Form(...),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ) -> Response:
     if not query.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
-    job = session.get(ImportJob, id)
+    job = session.get(ImportJob, job_id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
 
@@ -225,14 +225,14 @@ def search_track(
 
     return JSONResponse({"results": results})
 
-@router.post("/imports/{id}/review")
+@router.post("/imports/{job_id}/review")
 def submit_review(
-    id: int,
+    job_id: int,
     decisions: str = Form(...), # JSON string
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ) -> Response:
-    job = session.get(ImportJob, id)
+    job = session.get(ImportJob, job_id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
     try:
@@ -244,7 +244,7 @@ def submit_review(
 
     for d in decision_list:
         item = session.get(ImportItem, d["item_id"])
-        if item and item.job_id == id:
+        if item and item.job_id == job_id:
             if d["decision"] == "confirm":
                 if d.get("match_id"):
                     item.status = ItemStatus.MATCHED
@@ -260,15 +260,15 @@ def submit_review(
             session.add(item)
 
     session.commit()
-    return RedirectResponse(f"/imports/{id}", status_code=303)
+    return RedirectResponse(f"/imports/{job_id}", status_code=303)
 
-@router.post("/imports/{id}/finalize")
+@router.post("/imports/{job_id}/finalize")
 def finalize(
-    id: int,
+    job_id: int,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    job = session.get(ImportJob, id)
+    job = session.get(ImportJob, job_id)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=404)
     job.status = JobStatus.IMPORTING
@@ -276,4 +276,4 @@ def finalize(
     session.commit()
 
     q.enqueue(finalize_import_job, job.id)
-    return RedirectResponse(f"/imports/{id}", status_code=303)
+    return RedirectResponse(f"/imports/{job_id}", status_code=303)
