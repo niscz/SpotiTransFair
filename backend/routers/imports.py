@@ -12,6 +12,7 @@ import json
 from tenant import get_current_user
 import ytm
 from tidal import TidalClient
+from qobuz import QobuzClient
 from ytm import _headers_to_raw
 
 router = APIRouter()
@@ -181,6 +182,17 @@ def search_track(
              raise HTTPException(status_code=400, detail="Not connected to TIDAL")
         client = TidalClient(access_token=conn.credentials.get("access_token"))
         # Tidal returns: id, title, artists (list), album (string), duration (seconds)
+        results = client.search_tracks(query, limit=10)
+
+    elif job.target_provider == Provider.QOBUZ:
+        conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.QOBUZ)).first()
+        if not conn:
+             raise HTTPException(status_code=400, detail="Not connected to Qobuz")
+        access_token = conn.credentials.get("access_token")
+        app_id = conn.credentials.get("app_id")
+        if not access_token or not app_id:
+            raise HTTPException(status_code=400, detail="Qobuz credentials missing")
+        client = QobuzClient(app_id=app_id, user_auth_token=access_token)
         results = client.search_tracks(query, limit=10)
 
     elif job.target_provider == Provider.YTM:

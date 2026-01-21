@@ -8,6 +8,7 @@ class Provider(str, Enum):
     SPOTIFY = "spotify"
     TIDAL = "tidal"
     YTM = "ytm"
+    QOBUZ = "qobuz"
 
 class JobStatus(str, Enum):
     QUEUED = "queued"

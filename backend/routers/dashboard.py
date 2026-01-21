@@ -91,8 +91,13 @@ def dashboard(
     for job in jobs:
         provider_counts[normalize_provider(job.target_provider)] += 1
 
-    provider_series = [provider_counts[Provider.SPOTIFY], provider_counts[Provider.TIDAL], provider_counts[Provider.YTM]]
-    provider_labels = ["Spotify", "Tidal", "YouTube Music"]
+    provider_series = [
+        provider_counts[Provider.SPOTIFY],
+        provider_counts[Provider.TIDAL],
+        provider_counts[Provider.QOBUZ],
+        provider_counts[Provider.YTM],
+    ]
+    provider_labels = ["Spotify", "Tidal", "Qobuz", "YouTube Music"]
 
     # Item status mix
     item_counts = {s: 0 for s in ItemStatus}
@@ -166,6 +171,7 @@ def dashboard(
     provider_names = {
         Provider.SPOTIFY: "Spotify",
         Provider.TIDAL: "Tidal",
+        Provider.QOBUZ: "Qobuz",
         Provider.YTM: "YouTube Music",
     }
     for provider, metrics in provider_metrics.items():

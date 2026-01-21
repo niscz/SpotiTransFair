@@ -12,6 +12,7 @@ from spotify import SpotifyClient
 from tidal import TidalClient
 from matcher import match_track
 from ytm import get_video_ids, _headers_to_raw, _add_tracks_resilient
+from qobuz import QobuzClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,6 +52,20 @@ def finalize_import_job(job_id: int):
 
                 # Add Tracks
                 tidal_client.add_tracks(target_playlist_id, track_ids)
+
+            elif job.target_provider == Provider.QOBUZ:
+                qobuz_conn = session.exec(select(DBConnection).where(DBConnection.user_id == job.user_id, DBConnection.provider == Provider.QOBUZ)).first()
+                if not qobuz_conn:
+                    raise RuntimeError("Qobuz connection not found for user.")
+                access_token = qobuz_conn.credentials.get("access_token")
+                app_id = qobuz_conn.credentials.get("app_id")
+                if not access_token or not app_id:
+                    raise RuntimeError("Qobuz credentials missing for user.")
+                qobuz_client = QobuzClient(app_id=app_id, user_auth_token=access_token)
+
+                name = job.source_playlist_name or "Imported Playlist"
+                target_playlist_id = qobuz_client.create_playlist(name, "Migrated with SpotiTransFair")
+                qobuz_client.add_tracks(target_playlist_id, track_ids)
 
             elif job.target_provider == Provider.YTM:
                 ytm_conn = session.exec(select(DBConnection).where(DBConnection.user_id == job.user_id, DBConnection.provider == Provider.YTM)).first()
@@ -160,6 +175,30 @@ def process_import_job(job_id: int):
                 for track in tracks:
                     query = f"{track['name']} {track['artists'][0]}" if track['artists'] else track['name']
                     candidates = tidal_client.search_tracks(query)
+                    match, status = match_track(track, candidates)
+
+                    item = ImportItem(
+                        job_id=job.id,
+                        original_track_data=track,
+                        match_data=match,
+                        status=status,
+                        selected_match_id=match["id"] if match else None
+                    )
+                    session.add(item)
+
+            elif job.target_provider == Provider.QOBUZ:
+                qobuz_conn = session.exec(select(DBConnection).where(DBConnection.user_id == job.user_id, DBConnection.provider == Provider.QOBUZ)).first()
+                if not qobuz_conn:
+                    raise Exception("Qobuz connection not found")
+                access_token = qobuz_conn.credentials.get("access_token")
+                app_id = qobuz_conn.credentials.get("app_id")
+                if not access_token or not app_id:
+                    raise Exception("Qobuz credentials missing")
+                qobuz_client = QobuzClient(app_id=app_id, user_auth_token=access_token)
+
+                for track in tracks:
+                    query = f"{track['name']} {track['artists'][0]}" if track['artists'] else track['name']
+                    candidates = qobuz_client.search_tracks(query, limit=10)
                     match, status = match_track(track, candidates)
 
                     item = ImportItem(
