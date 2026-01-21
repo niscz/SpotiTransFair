@@ -88,19 +88,34 @@ class QobuzClient:
 
     def search_tracks(self, query: str, *, limit: int = 10) -> List[Dict[str, Any]]:
         payload = self._request("track/search", params={"query": query, "limit": limit})
-        items = payload.get("tracks", {}).get("items", [])
+        tracks_data = payload.get("tracks")
+        if not isinstance(tracks_data, dict):
+            tracks_data = {}
+        items = tracks_data.get("items", [])
+        if not isinstance(items, list):
+            items = []
+
         results: List[Dict[str, Any]] = []
         for item in items:
+            if not isinstance(item, dict):
+                continue
+
             artist_name = None
             artist = item.get("artist")
             if isinstance(artist, dict):
                 artist_name = artist.get("name")
+
+            album_title = None
+            album = item.get("album")
+            if isinstance(album, dict):
+                album_title = album.get("title")
+
             results.append({
                 "id": str(item.get("id")),
                 "title": item.get("title"),
                 "artists": [artist_name] if artist_name else [],
                 "duration": item.get("duration"),
-                "album": item.get("album", {}).get("title") if item.get("album") else None,
+                "album": album_title,
                 "isrc": item.get("isrc"),
             })
         return results
