@@ -118,6 +118,8 @@
        {% if job.target_playlist_id %}
           {% if job.target_provider == 'tidal' %}
             <a href="https://listen.tidal.com/playlist/{{ job.target_playlist_id }}" target="_blank" class="btn btn-primary btn-action">Open in TIDAL</a>
+          {% elif job.target_provider == 'qobuz' %}
+            <a href="https://play.qobuz.com/playlist/{{ job.target_playlist_id }}" target="_blank" class="btn btn-primary btn-action">Open in Qobuz</a>
           {% else %}
              <a href="https://music.youtube.com/playlist?list={{ job.target_playlist_id }}" target="_blank" class="btn btn-primary btn-action">Open in YTM</a>
           {% endif %}

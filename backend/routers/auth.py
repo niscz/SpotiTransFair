@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from database import get_session
 from models import User, Connection, Provider
 from auth import get_spotify_auth_url, get_tidal_auth_url, exchange_spotify_code, exchange_tidal_code
+from qobuz import login_qobuz, QobuzError
 import ytm
 import secrets
 from itsdangerous import URLSafeSerializer
@@ -31,7 +32,8 @@ def connect_page(
         "request": request,
         "spotify_connected": conn_map.get(Provider.SPOTIFY, False),
         "tidal_connected": conn_map.get(Provider.TIDAL, False),
-        "ytm_connected": conn_map.get(Provider.YTM, False)
+        "ytm_connected": conn_map.get(Provider.YTM, False),
+        "qobuz_connected": conn_map.get(Provider.QOBUZ, False),
     })
 
 @router.get("/auth/{provider}/login")
@@ -65,7 +67,8 @@ def callback(
     status = {
         "spotify_connected": conn_map.get(Provider.SPOTIFY, False),
         "tidal_connected": conn_map.get(Provider.TIDAL, False),
-        "ytm_connected": conn_map.get(Provider.YTM, False)
+        "ytm_connected": conn_map.get(Provider.YTM, False),
+        "qobuz_connected": conn_map.get(Provider.QOBUZ, False),
     }
 
     try:
@@ -119,6 +122,29 @@ def auth_ytm(
     creds = {"raw": headers}
     if not conn:
         conn = Connection(user_id=user.id, provider=Provider.YTM, credentials=creds)
+    else:
+        conn.credentials = creds
+    session.add(conn)
+    session.commit()
+
+    return RedirectResponse("/connect", status_code=303)
+
+@router.post("/auth/qobuz")
+def auth_qobuz(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    try:
+        creds = login_qobuz(email, password)
+    except QobuzError as exc:
+        return RedirectResponse(f"/connect?error={exc}", status_code=303)
+
+    conn = session.exec(select(Connection).where(Connection.user_id == user.id, Connection.provider == Provider.QOBUZ)).first()
+    if not conn:
+        conn = Connection(user_id=user.id, provider=Provider.QOBUZ, credentials=creds)
     else:
         conn.credentials = creds
     session.add(conn)

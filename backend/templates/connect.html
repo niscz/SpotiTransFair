@@ -127,6 +127,40 @@
                 </div>
                 <button type="submit" class="btn btn-primary w-100">Save Headers</button>
               </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Qobuz -->
+      <div class="col-md-4">
+        <div class="card">
+           <div class="card-status-top {% if qobuz_connected %}bg-success{% else %}bg-secondary{% endif %}"></div>
+           <div class="card-header">
+             <h3 class="card-title">Qobuz</h3>
+             <div class="card-actions">
+               {% if qobuz_connected %}
+                  <span class="text-success d-flex align-items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M5 12l5 5l10 -10" /></svg>
+                    Connected
+                  </span>
+               {% else %}
+                  <span class="text-secondary">Not Connected</span>
+               {% endif %}
+             </div>
+           </div>
+           <div class="card-body">
+              <p class="text-secondary">Target for migration.</p>
+              <form action="/auth/qobuz" method="POST">
+                <div class="mb-3">
+                  <label class="form-label">Email</label>
+                  <input class="form-control" name="email" type="email" autocomplete="username" placeholder="you@example.com">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Password</label>
+                  <input class="form-control" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Connect Qobuz</button>
+              </form>
            </div>
         </div>
       </div>

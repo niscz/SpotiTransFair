@@ -17,6 +17,9 @@
             <button type="submit" name="target_provider" value="tidal" class="btn btn-dark" id="btnTidal" disabled>
               Import to TIDAL
             </button>
+            <button type="submit" name="target_provider" value="qobuz" class="btn btn-info" id="btnQobuz" disabled>
+              Import to Qobuz
+            </button>
             <button type="submit" name="target_provider" value="ytm" class="btn btn-danger" id="btnYTM" disabled>
               Import to YTM
             </button>
@@ -88,6 +91,7 @@
       const checkBoxes = document.querySelectorAll('.playlist-checkbox');
       const selectAll = document.getElementById('selectAll');
       const btnTidal = document.getElementById('btnTidal');
+      const btnQobuz = document.getElementById('btnQobuz');
       const btnYTM = document.getElementById('btnYTM');
       const hiddenInput = document.getElementById('playlist_ids_input');
 
@@ -95,6 +99,7 @@
           const selected = Array.from(checkBoxes).filter(c => c.checked).map(c => c.value);
           hiddenInput.value = selected.join(',');
           btnTidal.disabled = selected.length === 0;
+          btnQobuz.disabled = selected.length === 0;
           btnYTM.disabled = selected.length === 0;
       }
 
