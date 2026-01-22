@@ -12,7 +12,7 @@ from spotify import SpotifyClient
 from tidal import TidalClient
 from matcher import match_track
 from ytm import get_video_ids, _headers_to_raw, _add_tracks_resilient
-from qobuz import QobuzClient
+from qobuz import QobuzClient, QOBUZ_APP_SECRET
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -59,9 +59,10 @@ def finalize_import_job(job_id: int):
                     raise RuntimeError("Qobuz connection not found for user.")
                 access_token = qobuz_conn.credentials.get("access_token")
                 app_id = qobuz_conn.credentials.get("app_id")
+                app_secret = qobuz_conn.credentials.get("app_secret") or QOBUZ_APP_SECRET
                 if not access_token or not app_id:
                     raise RuntimeError("Qobuz credentials missing for user.")
-                qobuz_client = QobuzClient(app_id=app_id, user_auth_token=access_token)
+                qobuz_client = QobuzClient(app_id=app_id, user_auth_token=access_token, app_secret=app_secret)
 
                 name = job.source_playlist_name or "Imported Playlist"
                 target_playlist_id = qobuz_client.create_playlist(name, "Migrated with SpotiTransFair")
@@ -192,9 +193,10 @@ def process_import_job(job_id: int):
                     raise Exception("Qobuz connection not found")
                 access_token = qobuz_conn.credentials.get("access_token")
                 app_id = qobuz_conn.credentials.get("app_id")
+                app_secret = qobuz_conn.credentials.get("app_secret") or QOBUZ_APP_SECRET
                 if not access_token or not app_id:
                     raise Exception("Qobuz credentials missing")
-                qobuz_client = QobuzClient(app_id=app_id, user_auth_token=access_token)
+                qobuz_client = QobuzClient(app_id=app_id, user_auth_token=access_token, app_secret=app_secret)
 
                 for track in tracks:
                     query = f"{track['name']} {track['artists'][0]}" if track['artists'] else track['name']
