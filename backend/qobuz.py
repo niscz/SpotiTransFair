@@ -19,7 +19,7 @@ class QobuzError(RuntimeError):
     """Raised for Qobuz API errors."""
 
 
-def _calculate_signature(endpoint: str, params: Dict[str, Any], ts: str, app_secret: str) -> str:
+def _calculate_signature(endpoint: str, params: Dict[str, Any], app_secret: str) -> str:
     """Calculates Qobuz API signature."""
     # endpoint example: "track/search" (no leading slash usually, but let's handle cleanup)
     method_name = endpoint.strip("/")
@@ -36,7 +36,6 @@ def _calculate_signature(endpoint: str, params: Dict[str, Any], ts: str, app_sec
         val = str(params[k])
         msg += f"{k}{val}"
 
-    msg += ts
     msg += app_secret
 
     return hashlib.md5(msg.encode("utf-8")).hexdigest()
@@ -63,7 +62,7 @@ def login_qobuz(email: str, password: str, *, app_id: Optional[str] = None, app_
     if app_secret:
         ts = str(int(time.time()))
         params["request_ts"] = ts
-        params["request_sig"] = _calculate_signature(endpoint, params, ts, app_secret)
+        params["request_sig"] = _calculate_signature(endpoint, params, app_secret)
 
     resp = None
     try:
@@ -139,7 +138,7 @@ class QobuzClient:
             if data:
                 sig_params.update(data)
 
-            query["request_sig"] = _calculate_signature(endpoint, sig_params, ts, self.app_secret)
+            query["request_sig"] = _calculate_signature(endpoint, sig_params, self.app_secret)
 
         resp = None
         try:
