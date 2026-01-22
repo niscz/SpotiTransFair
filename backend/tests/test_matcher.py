@@ -41,14 +41,8 @@ class TestMatcher(unittest.TestCase):
             {"title": "Hello Live", "artists": ["Adele"], "duration": 320}, # Slightly different
         ]
         # Depending on weights, this might be uncertain or matched.
-        # Title "Hello" vs "Hello Live" ratio is ~0.66.
-        # Artist 1.0. Duration 0.5 (diff 20s > 15s? No, diff is 20s. 320*1000 - 300000 = 20000. > 15000 -> 0.0)
-        # Score = 0.66*0.5 + 1.0*0.35 + 0.0*0.15 = 0.33 + 0.35 = 0.68.
-        # Should be NOT_FOUND (<0.75).
-
-        # Let's try something closer.
-        candidates = [{"title": "Hello", "artists": ["Adele"], "duration": 300}]
-        # This should match.
+        match, status = match_track(src, candidates)
+        self.assertEqual(status, ItemStatus.NOT_FOUND)
 
         # Let's try missing data (None)
         src = {"name": "Test", "artists": None, "duration_ms": None}

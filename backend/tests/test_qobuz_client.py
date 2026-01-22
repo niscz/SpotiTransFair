@@ -8,7 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 # Patch env vars BEFORE importing qobuz
 with patch.dict(os.environ, {"QOBUZ_APP_ID": "env_id", "QOBUZ_APP_SECRET": "env_secret"}):
-    from qobuz import QobuzClient, login_qobuz, QobuzError
+    from qobuz import QobuzClient, login_qobuz
 
 class TestQobuzClient(unittest.TestCase):
     def setUp(self):

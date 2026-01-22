@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import time
 import base64
 from typing import List, Dict, Optional, Any, Callable
 
@@ -99,7 +98,11 @@ class SpotifyClient:
 
     def _request(self, method: str, endpoint: str, **kwargs) -> Any:
         """Perform an authenticated request with auto-refresh on 401."""
-        url = f"{self.API_BASE_URL}{endpoint}"
+        if endpoint.startswith("http"):
+            url = endpoint
+        else:
+            url = f"{self.API_BASE_URL}{endpoint}"
+
         if not self.access_token:
             raise SpotifyError("No access token provided.")
 
@@ -145,13 +148,6 @@ class SpotifyClient:
         all_tracks: List[Dict] = []
 
         while endpoint:
-            # We use the full URL from 'next' if it exists, or construct relative
-            if endpoint.startswith("http"):
-                # _request expects relative endpoint usually, but we can hack it or handle pagination better
-                # Let's just strip base url if present
-                if endpoint.startswith(self.API_BASE_URL):
-                    endpoint = endpoint[len(self.API_BASE_URL):]
-
             data = self._request("GET", endpoint)
             for item in data.get("items", []):
                 track = item.get("track")
@@ -168,10 +164,6 @@ class SpotifyClient:
                     })
 
             endpoint = data.get("next")
-            if endpoint and endpoint.startswith(self.API_BASE_URL):
-                endpoint = endpoint[len(self.API_BASE_URL):]
-            elif not endpoint:
-                endpoint = None
 
         return all_tracks
 
