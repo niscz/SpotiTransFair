@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 def finalize_import_job(job_id: int):
     with Session(engine) as session:
         job = session.get(ImportJob, job_id)
-        if not job: return
+        if not job:
+            return
 
         try:
             logger.info(f"Finalizing job {job_id}")

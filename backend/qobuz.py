@@ -30,6 +30,8 @@ def _calculate_signature(endpoint: str, params: Dict[str, Any], ts: str, app_sec
     # Concatenate method + paramKey + paramValue + ...
     msg = method_name
     for k in keys:
+        if params[k] is None:
+            continue
         # Convert values to string
         val = str(params[k])
         msg += f"{k}{val}"
@@ -71,11 +73,11 @@ def login_qobuz(email: str, password: str, *, app_id: Optional[str] = None, app_
     except requests.RequestException as e:
         logger.error(f"Qobuz login failed: {e}")
         try:
-             if resp is not None:
+            if resp is not None:
                 err_payload = resp.json()
                 if "error" in err_payload:
                     raise QobuzError(err_payload["error"].get("message"))
-        except:
+        except Exception:
             pass
         raise QobuzError("Qobuz login request failed.")
 
@@ -155,7 +157,7 @@ class QobuzClient:
                     err_payload = resp.json()
                     if "error" in err_payload:
                         raise QobuzError(err_payload["error"].get("message"))
-            except:
+            except Exception:
                 pass
             raise QobuzError(f"Qobuz API request failed: {endpoint}")
 

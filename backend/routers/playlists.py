@@ -84,7 +84,8 @@ def create_import(
 
     pids = playlist_ids.split(",")
     for pid in pids:
-        if not pid.strip(): continue
+        if not pid.strip():
+            continue
 
         job = ImportJob(
             user_id=user.id,

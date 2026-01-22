@@ -3,7 +3,7 @@ import base64
 import requests
 import logging
 from urllib.parse import urlencode
-from typing import Dict, Any, Tuple
+from typing import Dict, Any
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -68,7 +68,10 @@ def exchange_spotify_code(code: str) -> Dict[str, Any]:
     }
     resp = requests.post(url, headers=headers, data=data, timeout=10)
     resp.raise_for_status()
-    return resp.json()
+    payload = resp.json()
+    if "error" in payload:
+        raise ValueError(f"Spotify token exchange error: {payload.get('error_description', payload['error'])}")
+    return payload
 
 def exchange_tidal_code(code: str) -> Dict[str, Any]:
     _require_credentials("TIDAL", TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET, env_prefix="TIDAL")
@@ -84,4 +87,7 @@ def exchange_tidal_code(code: str) -> Dict[str, Any]:
     }
     resp = requests.post(url, headers=headers, data=data, timeout=10)
     resp.raise_for_status()
-    return resp.json()
+    payload = resp.json()
+    if "error" in payload:
+        raise ValueError(f"TIDAL token exchange error: {payload.get('error_description', payload['error'])}")
+    return payload
